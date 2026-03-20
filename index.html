@@ -1,1 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Grid Movement (WASD)</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
 
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #10131a;
+        color: #e7ecff;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      }
+
+      .game-shell {
+        display: grid;
+        gap: 0.75rem;
+        justify-items: center;
+      }
+
+      canvas {
+        border: 2px solid #7aa2ff;
+        background: #161b24;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      }
+
+      .hint {
+        margin: 0;
+        font-size: 0.95rem;
+        color: #b7c2e9;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="game-shell">
+      <canvas id="game" width="640" height="640" aria-label="Grid game"></canvas>
+      <p class="hint">Use <strong>W A S D</strong> keys to move the player on the grid.</p>
+    </main>
+
+    <script>
+      const canvas = document.getElementById("game");
+      const ctx = canvas.getContext("2d");
+
+      const TILE_SIZE = 40;
+      const COLS = canvas.width / TILE_SIZE;
+      const ROWS = canvas.height / TILE_SIZE;
+
+      const player = {
+        x: Math.floor(COLS / 2),
+        y: Math.floor(ROWS / 2),
+        color: "#ffcf4a",
+      };
+
+      function drawGrid() {
+        ctx.strokeStyle = "#2a3242";
+        ctx.lineWidth = 1;
+
+        for (let x = 0; x <= canvas.width; x += TILE_SIZE) {
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, canvas.height);
+          ctx.stroke();
+        }
+
+        for (let y = 0; y <= canvas.height; y += TILE_SIZE) {
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(canvas.width, y);
+          ctx.stroke();
+        }
+      }
+
+      function drawPlayer() {
+        const padding = 6;
+        const px = player.x * TILE_SIZE + padding;
+        const py = player.y * TILE_SIZE + padding;
+        const size = TILE_SIZE - padding * 2;
+
+        ctx.fillStyle = player.color;
+        ctx.fillRect(px, py, size, size);
+      }
+
+      function render() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawGrid();
+        drawPlayer();
+      }
+
+      function movePlayer(dx, dy) {
+        player.x = Math.max(0, Math.min(COLS - 1, player.x + dx));
+        player.y = Math.max(0, Math.min(ROWS - 1, player.y + dy));
+        render();
+      }
+
+      window.addEventListener("keydown", (event) => {
+        const key = event.key.toLowerCase();
+
+        if (["w", "a", "s", "d"].includes(key)) {
+          event.preventDefault();
+        }
+
+        if (key === "w") movePlayer(0, -1);
+        if (key === "a") movePlayer(-1, 0);
+        if (key === "s") movePlayer(0, 1);
+        if (key === "d") movePlayer(1, 0);
+      });
+
+      render();
+    </script>
+  </body>
+</html>
