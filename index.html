@@ -15,6 +15,32 @@
         font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
       }
 
+      .wave-banner {
+        position: fixed;
+        top: 14px;
+        left: 50%;
+        transform: translateX(-50%);
+        margin: 0;
+        padding: 0.35rem 0.8rem;
+        border-radius: 999px;
+        font-weight: 700;
+        color: #12365f;
+        background: rgba(255, 255, 255, 0.66);
+        border: 1px solid rgba(47, 93, 140, 0.35);
+        animation: bob 2.2s ease-in-out infinite;
+        backdrop-filter: blur(2px);
+      }
+
+      @keyframes bob {
+        0%,
+        100% {
+          transform: translateX(-50%) translateY(0);
+        }
+        50% {
+          transform: translateX(-50%) translateY(-6px);
+        }
+      }
+
       .game-shell {
         display: grid;
         gap: 0.75rem;
@@ -36,15 +62,18 @@
     </style>
   </head>
   <body>
+    <p class="wave-banner" id="wave">Wave 1 · 30s</p>
+
     <main class="game-shell">
       <canvas id="game" width="640" height="640" aria-label="Shooting game"></canvas>
       <p class="hint">Move: <strong>W A S D</strong> (hold) · Shoot: <strong>Space</strong></p>
-      <p class="score" id="score">Enemies left: 0</p>
+      <p class="score" id="score">Enemies on screen: 0</p>
     </main>
 
     <script>
       const canvas = document.getElementById("game");
       const scoreLabel = document.getElementById("score");
+      const waveLabel = document.getElementById("wave");
       const ctx = canvas.getContext("2d");
 
       const PLAYER_MAX_SPEED = 8.5;
@@ -52,6 +81,8 @@
       const PLAYER_FRICTION = 35;
       const PLAYER_SIZE = 28;
       const BULLET_SPEED = 14;
+      const WAVE_DURATION = 30;
+      const ENEMY_SPEED = 1.7;
 
       const DIRECTIONS = {
         up: { dx: 0, dy: -1 },
@@ -73,6 +104,13 @@
       const bullets = [];
       const enemies = [];
       const clouds = [];
+
+      const waveState = {
+        number: 1,
+        timeLeft: WAVE_DURATION,
+        spawnCooldown: 0.4,
+      };
+
       let lastFrameTime = 0;
 
       function clamp(value, min, max) {
@@ -91,17 +129,26 @@
         }
       }
 
-      function createEnemies(count) {
-        enemies.length = 0;
-        while (enemies.length < count) {
-          const x = 20 + Math.random() * (canvas.width - 40);
-          const y = 20 + Math.random() * (canvas.height - 40);
-          const isNearPlayer = Math.hypot(x - player.x, y - player.y) < 90;
-          const overlaps = enemies.some((enemy) => Math.hypot(x - enemy.x, y - enemy.y) < 28);
-          if (!isNearPlayer && !overlaps) {
-            enemies.push({ x, y, size: 22 });
-          }
+      function spawnEdgeEnemy() {
+        const edge = Math.floor(Math.random() * 4);
+        let x = 0;
+        let y = 0;
+
+        if (edge === 0) {
+          x = Math.random() * canvas.width;
+          y = -16;
+        } else if (edge === 1) {
+          x = canvas.width + 16;
+          y = Math.random() * canvas.height;
+        } else if (edge === 2) {
+          x = Math.random() * canvas.width;
+          y = canvas.height + 16;
+        } else {
+          x = -16;
+          y = Math.random() * canvas.height;
         }
+
+        enemies.push({ x, y, size: 22, speed: ENEMY_SPEED + waveState.number * 0.07 });
       }
 
       function drawSkyBackground() {
@@ -141,8 +188,9 @@
         }
       }
 
-      function updateScore() {
-        scoreLabel.textContent = `Enemies left: ${enemies.length}`;
+      function updateHud() {
+        scoreLabel.textContent = `Enemies on screen: ${enemies.length}`;
+        waveLabel.textContent = `Wave ${waveState.number} · ${Math.ceil(waveState.timeLeft)}s`;
       }
 
       function render() {
@@ -194,6 +242,16 @@
         player.y = clamp(player.y + player.vy, PLAYER_SIZE / 2, canvas.height - PLAYER_SIZE / 2);
       }
 
+      function updateEnemies(dt) {
+        for (const enemy of enemies) {
+          const dx = player.x - enemy.x;
+          const dy = player.y - enemy.y;
+          const distance = Math.hypot(dx, dy) || 1;
+          enemy.x += (dx / distance) * enemy.speed * dt * 60;
+          enemy.y += (dy / distance) * enemy.speed * dt * 60;
+        }
+      }
+
       function shoot() {
         const direction = DIRECTIONS[player.facing];
         bullets.push({
@@ -221,8 +279,23 @@
             bullets.splice(i, 1);
           }
         }
+      }
 
-        updateScore();
+      function updateWave(dt) {
+        waveState.timeLeft -= dt;
+        waveState.spawnCooldown -= dt;
+
+        if (waveState.spawnCooldown <= 0) {
+          spawnEdgeEnemy();
+          const baseSpawnInterval = Math.max(0.55, 1.4 - waveState.number * 0.05);
+          waveState.spawnCooldown = baseSpawnInterval;
+        }
+
+        if (waveState.timeLeft <= 0) {
+          waveState.number += 1;
+          waveState.timeLeft = WAVE_DURATION;
+          waveState.spawnCooldown = 0.25;
+        }
       }
 
       function updateClouds(dt) {
@@ -266,17 +339,19 @@
         const dt = Math.min((timestamp - lastFrameTime) / 1000, 0.05);
         lastFrameTime = timestamp;
 
+        updateWave(dt);
         updateClouds(dt);
         updatePlayer(dt);
+        updateEnemies(dt);
         updateBulletsAndHits(dt);
+        updateHud();
         render();
 
         requestAnimationFrame(gameLoop);
       }
 
       createClouds(22);
-      createEnemies(14);
-      updateScore();
+      updateHud();
       requestAnimationFrame(gameLoop);
     </script>
   </body>
