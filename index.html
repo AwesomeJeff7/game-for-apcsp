@@ -3,19 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Grid Movement + Shooting</title>
+    <title>Smooth Movement + Shooting</title>
     <style>
-      :root {
-        color-scheme: dark;
-      }
-
       body {
         margin: 0;
         min-height: 100vh;
         display: grid;
         place-items: center;
-        background: #10131a;
-        color: #e7ecff;
+        background: linear-gradient(#75b7ff, #cbe8ff);
+        color: #0f2440;
         font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
       }
 
@@ -26,22 +22,22 @@
       }
 
       canvas {
-        border: 2px solid #7aa2ff;
-        background: #161b24;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        border: 2px solid #2f5d8c;
+        background: linear-gradient(#6fb2ff 0%, #89c2ff 45%, #cfe9ff 100%);
+        box-shadow: 0 12px 28px rgba(22, 54, 93, 0.25);
       }
 
       .hint,
       .score {
         margin: 0;
         font-size: 0.95rem;
-        color: #b7c2e9;
+        color: #17365e;
       }
     </style>
   </head>
   <body>
     <main class="game-shell">
-      <canvas id="game" width="640" height="640" aria-label="Grid game"></canvas>
+      <canvas id="game" width="640" height="640" aria-label="Shooting game"></canvas>
       <p class="hint">Move: <strong>W A S D</strong> (hold) · Shoot: <strong>Space</strong></p>
       <p class="score" id="score">Enemies left: 0</p>
     </main>
@@ -51,13 +47,11 @@
       const scoreLabel = document.getElementById("score");
       const ctx = canvas.getContext("2d");
 
-      const TILE_SIZE = 40;
-      const COLS = canvas.width / TILE_SIZE;
-      const ROWS = canvas.height / TILE_SIZE;
-      const BULLET_STEP_MS = 90;
       const PLAYER_MAX_SPEED = 8.5;
       const PLAYER_ACCEL = 40;
       const PLAYER_FRICTION = 35;
+      const PLAYER_SIZE = 28;
+      const BULLET_SPEED = 14;
 
       const DIRECTIONS = {
         up: { dx: 0, dy: -1 },
@@ -72,100 +66,77 @@
         vx: 0,
         vy: 0,
         facing: "up",
-        size: TILE_SIZE - 12,
         color: "#ffcf4a",
       };
 
       const input = { up: false, left: false, down: false, right: false };
       const bullets = [];
       const enemies = [];
-      let lastBulletStep = 0;
+      const clouds = [];
       let lastFrameTime = 0;
 
       function clamp(value, min, max) {
         return Math.max(min, Math.min(max, value));
       }
 
-      function playerCell() {
-        return {
-          x: clamp(Math.floor(player.x / TILE_SIZE), 0, COLS - 1),
-          y: clamp(Math.floor(player.y / TILE_SIZE), 0, ROWS - 1),
-        };
-      }
-
-      function cellHasEnemy(x, y) {
-        return enemies.some((enemy) => enemy.x === x && enemy.y === y);
+      function createClouds(count) {
+        clouds.length = 0;
+        for (let i = 0; i < count; i++) {
+          clouds.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            size: 14 + Math.random() * 26,
+            drift: 5 + Math.random() * 12,
+          });
+        }
       }
 
       function createEnemies(count) {
         enemies.length = 0;
         while (enemies.length < count) {
-          const x = Math.floor(Math.random() * COLS);
-          const y = Math.floor(Math.random() * ROWS);
-          const cell = playerCell();
-          if ((x !== cell.x || y !== cell.y) && !cellHasEnemy(x, y)) {
-            enemies.push({ x, y });
+          const x = 20 + Math.random() * (canvas.width - 40);
+          const y = 20 + Math.random() * (canvas.height - 40);
+          const isNearPlayer = Math.hypot(x - player.x, y - player.y) < 90;
+          const overlaps = enemies.some((enemy) => Math.hypot(x - enemy.x, y - enemy.y) < 28);
+          if (!isNearPlayer && !overlaps) {
+            enemies.push({ x, y, size: 22 });
           }
         }
       }
 
-      function drawGrid() {
-        ctx.strokeStyle = "#2a3242";
-        ctx.lineWidth = 1;
-
-        for (let x = 0; x <= canvas.width; x += TILE_SIZE) {
-          ctx.beginPath();
-          ctx.moveTo(x, 0);
-          ctx.lineTo(x, canvas.height);
-          ctx.stroke();
-        }
-
-        for (let y = 0; y <= canvas.height; y += TILE_SIZE) {
-          ctx.beginPath();
-          ctx.moveTo(0, y);
-          ctx.lineTo(canvas.width, y);
-          ctx.stroke();
+      function drawSkyBackground() {
+        for (const cloud of clouds) {
+          ctx.fillStyle = "rgba(255,255,255,0.88)";
+          ctx.fillRect(cloud.x, cloud.y, cloud.size, cloud.size);
+          ctx.fillRect(cloud.x + cloud.size * 0.8, cloud.y + 4, cloud.size * 0.9, cloud.size * 0.9);
+          ctx.fillRect(cloud.x + cloud.size * 0.35, cloud.y - cloud.size * 0.35, cloud.size, cloud.size);
         }
       }
 
       function drawPlayer() {
-        const size = player.size;
-        const px = player.x - size / 2;
-        const py = player.y - size / 2;
+        const px = player.x - PLAYER_SIZE / 2;
+        const py = player.y - PLAYER_SIZE / 2;
 
         ctx.fillStyle = player.color;
-        ctx.fillRect(px, py, size, size);
+        ctx.fillRect(px, py, PLAYER_SIZE, PLAYER_SIZE);
 
         const facing = DIRECTIONS[player.facing];
         ctx.fillStyle = "#0b0f17";
-        ctx.fillRect(
-          player.x + facing.dx * 10 - 3,
-          player.y + facing.dy * 10 - 3,
-          6,
-          6,
-        );
+        ctx.fillRect(player.x + facing.dx * 11 - 3, player.y + facing.dy * 11 - 3, 6, 6);
       }
 
       function drawEnemies() {
         ctx.fillStyle = "#ff5a7d";
         for (const enemy of enemies) {
-          const padding = 9;
-          ctx.fillRect(
-            enemy.x * TILE_SIZE + padding,
-            enemy.y * TILE_SIZE + padding,
-            TILE_SIZE - padding * 2,
-            TILE_SIZE - padding * 2,
-          );
+          ctx.fillRect(enemy.x - enemy.size / 2, enemy.y - enemy.size / 2, enemy.size, enemy.size);
         }
       }
 
       function drawBullets() {
         ctx.fillStyle = "#62f4ff";
         for (const bullet of bullets) {
-          const cx = bullet.x * TILE_SIZE + TILE_SIZE / 2;
-          const cy = bullet.y * TILE_SIZE + TILE_SIZE / 2;
           ctx.beginPath();
-          ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+          ctx.arc(bullet.x, bullet.y, 5, 0, Math.PI * 2);
           ctx.fill();
         }
       }
@@ -176,7 +147,7 @@
 
       function render() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        drawGrid();
+        drawSkyBackground();
         drawEnemies();
         drawBullets();
         drawPlayer();
@@ -219,42 +190,49 @@
           player.vy = targetVy;
         }
 
-        player.x = clamp(player.x + player.vx, player.size / 2, canvas.width - player.size / 2);
-        player.y = clamp(player.y + player.vy, player.size / 2, canvas.height - player.size / 2);
+        player.x = clamp(player.x + player.vx, PLAYER_SIZE / 2, canvas.width - PLAYER_SIZE / 2);
+        player.y = clamp(player.y + player.vy, PLAYER_SIZE / 2, canvas.height - PLAYER_SIZE / 2);
       }
 
       function shoot() {
         const direction = DIRECTIONS[player.facing];
-        const cell = playerCell();
-        const startX = cell.x + direction.dx;
-        const startY = cell.y + direction.dy;
-
-        if (startX < 0 || startX >= COLS || startY < 0 || startY >= ROWS) {
-          return;
-        }
-
-        bullets.push({ x: startX, y: startY, dx: direction.dx, dy: direction.dy });
+        bullets.push({
+          x: player.x + direction.dx * (PLAYER_SIZE / 2 + 8),
+          y: player.y + direction.dy * (PLAYER_SIZE / 2 + 8),
+          vx: direction.dx * BULLET_SPEED,
+          vy: direction.dy * BULLET_SPEED,
+        });
       }
 
-      function advanceBullets() {
+      function updateBulletsAndHits(dt) {
         for (let i = bullets.length - 1; i >= 0; i--) {
           const bullet = bullets[i];
-          const enemyIndex = enemies.findIndex((enemy) => enemy.x === bullet.x && enemy.y === bullet.y);
+          bullet.x += bullet.vx * dt * 60;
+          bullet.y += bullet.vy * dt * 60;
 
-          if (enemyIndex !== -1) {
-            enemies.splice(enemyIndex, 1);
+          if (bullet.x < -8 || bullet.x > canvas.width + 8 || bullet.y < -8 || bullet.y > canvas.height + 8) {
             bullets.splice(i, 1);
             continue;
           }
 
-          bullet.x += bullet.dx;
-          bullet.y += bullet.dy;
-
-          if (bullet.x < 0 || bullet.x >= COLS || bullet.y < 0 || bullet.y >= ROWS) {
+          const enemyIndex = enemies.findIndex((enemy) => Math.hypot(bullet.x - enemy.x, bullet.y - enemy.y) < enemy.size / 2 + 4);
+          if (enemyIndex !== -1) {
+            enemies.splice(enemyIndex, 1);
             bullets.splice(i, 1);
           }
         }
+
         updateScore();
+      }
+
+      function updateClouds(dt) {
+        for (const cloud of clouds) {
+          cloud.x += cloud.drift * dt;
+          if (cloud.x > canvas.width + cloud.size * 2) {
+            cloud.x = -cloud.size * 2;
+            cloud.y = Math.random() * canvas.height;
+          }
+        }
       }
 
       function setKeyState(key, value) {
@@ -288,17 +266,15 @@
         const dt = Math.min((timestamp - lastFrameTime) / 1000, 0.05);
         lastFrameTime = timestamp;
 
+        updateClouds(dt);
         updatePlayer(dt);
-
-        if (timestamp - lastBulletStep >= BULLET_STEP_MS) {
-          advanceBullets();
-          lastBulletStep = timestamp;
-        }
-
+        updateBulletsAndHits(dt);
         render();
+
         requestAnimationFrame(gameLoop);
       }
 
+      createClouds(22);
       createEnemies(14);
       updateScore();
       requestAnimationFrame(gameLoop);
