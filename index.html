@@ -42,7 +42,7 @@
   <body>
     <main class="game-shell">
       <canvas id="game" width="640" height="640" aria-label="Grid game"></canvas>
-      <p class="hint">Move: <strong>W A S D</strong> · Shoot: <strong>Space</strong></p>
+      <p class="hint">Move: <strong>W A S D</strong> (hold) · Shoot: <strong>Space</strong></p>
       <p class="score" id="score">Enemies left: 0</p>
     </main>
 
@@ -54,7 +54,10 @@
       const TILE_SIZE = 40;
       const COLS = canvas.width / TILE_SIZE;
       const ROWS = canvas.height / TILE_SIZE;
-      const BULLET_STEP_MS = 120;
+      const BULLET_STEP_MS = 90;
+      const PLAYER_MAX_SPEED = 8.5;
+      const PLAYER_ACCEL = 40;
+      const PLAYER_FRICTION = 35;
 
       const DIRECTIONS = {
         up: { dx: 0, dy: -1 },
@@ -64,18 +67,30 @@
       };
 
       const player = {
-        x: Math.floor(COLS / 2),
-        y: Math.floor(ROWS / 2),
+        x: canvas.width / 2,
+        y: canvas.height / 2,
+        vx: 0,
+        vy: 0,
         facing: "up",
+        size: TILE_SIZE - 12,
         color: "#ffcf4a",
       };
 
+      const input = { up: false, left: false, down: false, right: false };
       const bullets = [];
       const enemies = [];
       let lastBulletStep = 0;
+      let lastFrameTime = 0;
 
-      function cellIsPlayer(x, y) {
-        return player.x === x && player.y === y;
+      function clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+      }
+
+      function playerCell() {
+        return {
+          x: clamp(Math.floor(player.x / TILE_SIZE), 0, COLS - 1),
+          y: clamp(Math.floor(player.y / TILE_SIZE), 0, ROWS - 1),
+        };
       }
 
       function cellHasEnemy(x, y) {
@@ -87,7 +102,8 @@
         while (enemies.length < count) {
           const x = Math.floor(Math.random() * COLS);
           const y = Math.floor(Math.random() * ROWS);
-          if (!cellIsPlayer(x, y) && !cellHasEnemy(x, y)) {
+          const cell = playerCell();
+          if ((x !== cell.x || y !== cell.y) && !cellHasEnemy(x, y)) {
             enemies.push({ x, y });
           }
         }
@@ -113,10 +129,9 @@
       }
 
       function drawPlayer() {
-        const padding = 6;
-        const px = player.x * TILE_SIZE + padding;
-        const py = player.y * TILE_SIZE + padding;
-        const size = TILE_SIZE - padding * 2;
+        const size = player.size;
+        const px = player.x - size / 2;
+        const py = player.y - size / 2;
 
         ctx.fillStyle = player.color;
         ctx.fillRect(px, py, size, size);
@@ -124,8 +139,8 @@
         const facing = DIRECTIONS[player.facing];
         ctx.fillStyle = "#0b0f17";
         ctx.fillRect(
-          px + size / 2 + facing.dx * 10 - 3,
-          py + size / 2 + facing.dy * 10 - 3,
+          player.x + facing.dx * 10 - 3,
+          player.y + facing.dy * 10 - 3,
           6,
           6,
         );
@@ -167,16 +182,52 @@
         drawPlayer();
       }
 
-      function movePlayer(dx, dy, facing) {
-        player.facing = facing;
-        player.x = Math.max(0, Math.min(COLS - 1, player.x + dx));
-        player.y = Math.max(0, Math.min(ROWS - 1, player.y + dy));
+      function updatePlayer(dt) {
+        let inputX = 0;
+        let inputY = 0;
+
+        if (input.left) inputX -= 1;
+        if (input.right) inputX += 1;
+        if (input.up) inputY -= 1;
+        if (input.down) inputY += 1;
+
+        let targetVx = 0;
+        let targetVy = 0;
+
+        if (inputX !== 0 || inputY !== 0) {
+          const length = Math.hypot(inputX, inputY);
+          targetVx = (inputX / length) * PLAYER_MAX_SPEED;
+          targetVy = (inputY / length) * PLAYER_MAX_SPEED;
+
+          if (Math.abs(inputX) >= Math.abs(inputY)) {
+            player.facing = inputX >= 0 ? "right" : "left";
+          } else {
+            player.facing = inputY >= 0 ? "down" : "up";
+          }
+        }
+
+        const accel = (inputX !== 0 || inputY !== 0 ? PLAYER_ACCEL : PLAYER_FRICTION) * dt;
+        const deltaVx = targetVx - player.vx;
+        const deltaVy = targetVy - player.vy;
+        const deltaMagnitude = Math.hypot(deltaVx, deltaVy);
+
+        if (deltaMagnitude > accel && deltaMagnitude !== 0) {
+          player.vx += (deltaVx / deltaMagnitude) * accel;
+          player.vy += (deltaVy / deltaMagnitude) * accel;
+        } else {
+          player.vx = targetVx;
+          player.vy = targetVy;
+        }
+
+        player.x = clamp(player.x + player.vx, player.size / 2, canvas.width - player.size / 2);
+        player.y = clamp(player.y + player.vy, player.size / 2, canvas.height - player.size / 2);
       }
 
       function shoot() {
         const direction = DIRECTIONS[player.facing];
-        const startX = player.x + direction.dx;
-        const startY = player.y + direction.dy;
+        const cell = playerCell();
+        const startX = cell.x + direction.dx;
+        const startY = cell.y + direction.dy;
 
         if (startX < 0 || startX >= COLS || startY < 0 || startY >= ROWS) {
           return;
@@ -188,21 +239,29 @@
       function advanceBullets() {
         for (let i = bullets.length - 1; i >= 0; i--) {
           const bullet = bullets[i];
+          const enemyIndex = enemies.findIndex((enemy) => enemy.x === bullet.x && enemy.y === bullet.y);
+
+          if (enemyIndex !== -1) {
+            enemies.splice(enemyIndex, 1);
+            bullets.splice(i, 1);
+            continue;
+          }
+
           bullet.x += bullet.dx;
           bullet.y += bullet.dy;
 
           if (bullet.x < 0 || bullet.x >= COLS || bullet.y < 0 || bullet.y >= ROWS) {
             bullets.splice(i, 1);
-            continue;
-          }
-
-          const enemyIndex = enemies.findIndex((enemy) => enemy.x === bullet.x && enemy.y === bullet.y);
-          if (enemyIndex !== -1) {
-            enemies.splice(enemyIndex, 1);
-            bullets.splice(i, 1);
           }
         }
         updateScore();
+      }
+
+      function setKeyState(key, value) {
+        if (key === "w") input.up = value;
+        if (key === "a") input.left = value;
+        if (key === "s") input.down = value;
+        if (key === "d") input.right = value;
       }
 
       window.addEventListener("keydown", (event) => {
@@ -212,14 +271,25 @@
           event.preventDefault();
         }
 
-        if (key === "w") movePlayer(0, -1, "up");
-        if (key === "a") movePlayer(-1, 0, "left");
-        if (key === "s") movePlayer(0, 1, "down");
-        if (key === "d") movePlayer(1, 0, "right");
+        setKeyState(key, true);
         if (key === " ") shoot();
       });
 
+      window.addEventListener("keyup", (event) => {
+        const key = event.key.toLowerCase();
+        setKeyState(key, false);
+      });
+
       function gameLoop(timestamp) {
+        if (lastFrameTime === 0) {
+          lastFrameTime = timestamp;
+        }
+
+        const dt = Math.min((timestamp - lastFrameTime) / 1000, 0.05);
+        lastFrameTime = timestamp;
+
+        updatePlayer(dt);
+
         if (timestamp - lastBulletStep >= BULLET_STEP_MS) {
           advanceBullets();
           lastBulletStep = timestamp;
