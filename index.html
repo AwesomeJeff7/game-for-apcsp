@@ -1,13 +1,237 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Game for APCSP</title>
-    <script src="shooting.js"></script>
-</head>
-<body>
-    <h1>Welcome to the Game!</h1>
-    <p>Original game logic goes here...</p>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Grid Movement + Shooting</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #10131a;
+        color: #e7ecff;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      }
+
+      .game-shell {
+        display: grid;
+        gap: 0.75rem;
+        justify-items: center;
+      }
+
+      canvas {
+        border: 2px solid #7aa2ff;
+        background: #161b24;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      }
+
+      .hint,
+      .score {
+        margin: 0;
+        font-size: 0.95rem;
+        color: #b7c2e9;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="game-shell">
+      <canvas id="game" width="640" height="640" aria-label="Grid game"></canvas>
+      <p class="hint">Move: <strong>W A S D</strong> · Shoot: <strong>Space</strong></p>
+      <p class="score" id="score">Enemies left: 0</p>
+    </main>
+
+    <script>
+      const canvas = document.getElementById("game");
+      const scoreLabel = document.getElementById("score");
+      const ctx = canvas.getContext("2d");
+
+      const TILE_SIZE = 40;
+      const COLS = canvas.width / TILE_SIZE;
+      const ROWS = canvas.height / TILE_SIZE;
+      const BULLET_STEP_MS = 120;
+
+      const DIRECTIONS = {
+        up: { dx: 0, dy: -1 },
+        left: { dx: -1, dy: 0 },
+        down: { dx: 0, dy: 1 },
+        right: { dx: 1, dy: 0 },
+      };
+
+      const player = {
+        x: Math.floor(COLS / 2),
+        y: Math.floor(ROWS / 2),
+        facing: "up",
+        color: "#ffcf4a",
+      };
+
+      const bullets = [];
+      const enemies = [];
+      let lastBulletStep = 0;
+
+      function cellIsPlayer(x, y) {
+        return player.x === x && player.y === y;
+      }
+
+      function cellHasEnemy(x, y) {
+        return enemies.some((enemy) => enemy.x === x && enemy.y === y);
+      }
+
+      function createEnemies(count) {
+        enemies.length = 0;
+        while (enemies.length < count) {
+          const x = Math.floor(Math.random() * COLS);
+          const y = Math.floor(Math.random() * ROWS);
+          if (!cellIsPlayer(x, y) && !cellHasEnemy(x, y)) {
+            enemies.push({ x, y });
+          }
+        }
+      }
+
+      function drawGrid() {
+        ctx.strokeStyle = "#2a3242";
+        ctx.lineWidth = 1;
+
+        for (let x = 0; x <= canvas.width; x += TILE_SIZE) {
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, canvas.height);
+          ctx.stroke();
+        }
+
+        for (let y = 0; y <= canvas.height; y += TILE_SIZE) {
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(canvas.width, y);
+          ctx.stroke();
+        }
+      }
+
+      function drawPlayer() {
+        const padding = 6;
+        const px = player.x * TILE_SIZE + padding;
+        const py = player.y * TILE_SIZE + padding;
+        const size = TILE_SIZE - padding * 2;
+
+        ctx.fillStyle = player.color;
+        ctx.fillRect(px, py, size, size);
+
+        const facing = DIRECTIONS[player.facing];
+        ctx.fillStyle = "#0b0f17";
+        ctx.fillRect(
+          px + size / 2 + facing.dx * 10 - 3,
+          py + size / 2 + facing.dy * 10 - 3,
+          6,
+          6,
+        );
+      }
+
+      function drawEnemies() {
+        ctx.fillStyle = "#ff5a7d";
+        for (const enemy of enemies) {
+          const padding = 9;
+          ctx.fillRect(
+            enemy.x * TILE_SIZE + padding,
+            enemy.y * TILE_SIZE + padding,
+            TILE_SIZE - padding * 2,
+            TILE_SIZE - padding * 2,
+          );
+        }
+      }
+
+      function drawBullets() {
+        ctx.fillStyle = "#62f4ff";
+        for (const bullet of bullets) {
+          const cx = bullet.x * TILE_SIZE + TILE_SIZE / 2;
+          const cy = bullet.y * TILE_SIZE + TILE_SIZE / 2;
+          ctx.beginPath();
+          ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      function updateScore() {
+        scoreLabel.textContent = `Enemies left: ${enemies.length}`;
+      }
+
+      function render() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawGrid();
+        drawEnemies();
+        drawBullets();
+        drawPlayer();
+      }
+
+      function movePlayer(dx, dy, facing) {
+        player.facing = facing;
+        player.x = Math.max(0, Math.min(COLS - 1, player.x + dx));
+        player.y = Math.max(0, Math.min(ROWS - 1, player.y + dy));
+      }
+
+      function shoot() {
+        const direction = DIRECTIONS[player.facing];
+        const startX = player.x + direction.dx;
+        const startY = player.y + direction.dy;
+
+        if (startX < 0 || startX >= COLS || startY < 0 || startY >= ROWS) {
+          return;
+        }
+
+        bullets.push({ x: startX, y: startY, dx: direction.dx, dy: direction.dy });
+      }
+
+      function advanceBullets() {
+        for (let i = bullets.length - 1; i >= 0; i--) {
+          const bullet = bullets[i];
+          bullet.x += bullet.dx;
+          bullet.y += bullet.dy;
+
+          if (bullet.x < 0 || bullet.x >= COLS || bullet.y < 0 || bullet.y >= ROWS) {
+            bullets.splice(i, 1);
+            continue;
+          }
+
+          const enemyIndex = enemies.findIndex((enemy) => enemy.x === bullet.x && enemy.y === bullet.y);
+          if (enemyIndex !== -1) {
+            enemies.splice(enemyIndex, 1);
+            bullets.splice(i, 1);
+          }
+        }
+        updateScore();
+      }
+
+      window.addEventListener("keydown", (event) => {
+        const key = event.key.toLowerCase();
+
+        if (["w", "a", "s", "d", " "].includes(key)) {
+          event.preventDefault();
+        }
+
+        if (key === "w") movePlayer(0, -1, "up");
+        if (key === "a") movePlayer(-1, 0, "left");
+        if (key === "s") movePlayer(0, 1, "down");
+        if (key === "d") movePlayer(1, 0, "right");
+        if (key === " ") shoot();
+      });
+
+      function gameLoop(timestamp) {
+        if (timestamp - lastBulletStep >= BULLET_STEP_MS) {
+          advanceBullets();
+          lastBulletStep = timestamp;
+        }
+
+        render();
+        requestAnimationFrame(gameLoop);
+      }
+
+      createEnemies(14);
+      updateScore();
+      requestAnimationFrame(gameLoop);
+    </script>
+  </body>
 </html>
