@@ -277,7 +277,7 @@
             player.facing = inputY >= 0 ? "down" : "up";
           }
         }
-@@ -286,73 +339,166 @@
+@@ -286,73 +339,168 @@
         waveState.spawnCooldown -= dt;
 
         if (waveState.spawnCooldown <= 0) {
@@ -439,7 +439,9 @@
       }
 
       createClouds(22);
+      spawnEdgeEnemy();
       updateHud();
+      render();
       requestAnimationFrame(gameLoop);
     </script>
   </body>
