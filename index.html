@@ -74,6 +74,39 @@
       const canvas = document.getElementById("game");
       const scoreLabel = document.getElementById("score");
       const waveLabel = document.getElementById("wave");
+      const canvas =
+        document.getElementById("game") ||
+        (() => {
+          const createdCanvas = document.createElement("canvas");
+          createdCanvas.id = "game";
+          createdCanvas.width = 640;
+          createdCanvas.height = 640;
+          createdCanvas.setAttribute("aria-label", "Shooting game");
+          document.body.appendChild(createdCanvas);
+          return createdCanvas;
+        })();
+
+      const scoreLabel =
+        document.getElementById("score") ||
+        (() => {
+          const label = document.createElement("p");
+          label.id = "score";
+          label.className = "score";
+          label.textContent = "Enemies on screen: 0";
+          document.body.appendChild(label);
+          return label;
+        })();
+
+      const waveLabel =
+        document.getElementById("wave") ||
+        (() => {
+          const label = document.createElement("p");
+          label.id = "wave";
+          label.className = "wave-banner";
+          label.textContent = "Wave 1 · 30s";
+          document.body.appendChild(label);
+          return label;
+        })();
       const ctx = canvas.getContext("2d");
 
       const PLAYER_MAX_SPEED = 8.5;
@@ -277,7 +310,7 @@
             player.facing = inputY >= 0 ? "down" : "up";
           }
         }
-@@ -286,73 +339,168 @@
+@@ -286,73 +369,168 @@
         waveState.spawnCooldown -= dt;
 
         if (waveState.spawnCooldown <= 0) {
@@ -438,6 +471,14 @@
         requestAnimationFrame(gameLoop);
       }
 
+      createClouds(22);
+      spawnEdgeEnemy();
+      updateHud();
+      render();
+      requestAnimationFrame(gameLoop);
+    </script>
+  </body>
+</html>
       createClouds(22);
       spawnEdgeEnemy();
       updateHud();
