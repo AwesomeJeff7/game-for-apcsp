@@ -60,15 +60,6 @@
         color: #17365e;
       }
 
-      .dev-skip {
-        font: 600 0.82rem system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-        padding: 0.35rem 0.7rem;
-        border-radius: 8px;
-        border: 1px solid #2f5d8c;
-        background: rgba(255, 255, 255, 0.9);
-        color: #113459;
-        cursor: pointer;
-      }
     </style>
   </head>
   <body>
@@ -78,14 +69,12 @@
       <canvas id="game" width="640" height="640" aria-label="Shooting game"></canvas>
       <p class="hint">Move: <strong>W A S D</strong> (hold) · Shoot: <strong>Space</strong></p>
       <p class="score" id="score">Enemies on screen: 0</p>
-      <button class="dev-skip" id="dev-next-wave" type="button">DEV: Next Wave Upgrade</button>
     </main>
 
     <script>
       const canvas = document.getElementById("game");
       const scoreLabel = document.getElementById("score");
       const waveLabel = document.getElementById("wave");
-      const devNextWaveButton = document.getElementById("dev-next-wave");
       const ctx = canvas.getContext("2d");
 
       const PLAYER_MAX_SPEED = 8.5;
@@ -137,6 +126,7 @@
         bulletSpeedMultiplier: 1,
         shotMode: 1, // 1=single, 2=double, 3=triple, 8=all directions
         hasLaser: false,
+        hasLaserAllDirections: false,
       };
 
       const upgradeMenu = {
@@ -310,6 +300,17 @@
             description: "Replace bullets with a piercing beam.",
             apply: () => {
               playerStats.hasLaser = true;
+            },
+          });
+        }
+
+        if (playerStats.hasLaser && !playerStats.hasLaserAllDirections && waveState.number >= 10) {
+          pool.push({
+            key: "laser8",
+            title: "Laser All-Way",
+            description: "Laser fires all directions.",
+            apply: () => {
+              playerStats.hasLaserAllDirections = true;
             },
           });
         }
@@ -495,7 +496,7 @@
           ctx.fillText(card.description, x + upgradeCard.width / 2, cardY + 82);
           ctx.fillStyle = "#8de39a";
           ctx.font = "700 13px system-ui, sans-serif";
-          ctx.fillText("Click to choose", x + upgradeCard.width / 2, cardY + upgradeCard.height - 18);
+          ctx.fillText(`Click or press ${index + 1}`, x + upgradeCard.width / 2, cardY + upgradeCard.height - 18);
         });
         ctx.textAlign = "left";
       }
@@ -605,29 +606,33 @@
 
       function shoot() {
         if (playerStats.hasLaser) {
-          const dirX = player.aimDx || 1;
-          const dirY = player.aimDy || 0;
-          const startX = player.x;
-          const startY = player.y;
-          const end = getLaserEndPoint(startX, startY, dirX, dirY);
-          const laser = {
-            startX,
-            startY,
-            endX: end.x,
-            endY: end.y,
-            width: 16,
-            life: 0.35,
-            maxLife: 0.35,
-          };
-          lasers.push(laser);
+          const laserDirections = playerStats.hasLaserAllDirections
+            ? Array.from({ length: 8 }, (_, i) => rotateVector(1, 0, (Math.PI * 2 * i) / 8))
+            : [{ dx: player.aimDx || 1, dy: player.aimDy || 0 }];
 
-          for (let i = enemies.length - 1; i >= 0; i--) {
-            const enemy = enemies[i];
-            const distance = pointToSegmentDistance(enemy.x, enemy.y, laser.startX, laser.startY, laser.endX, laser.endY);
-            if (distance <= enemy.size / 2 + laser.width / 2) {
-              enemy.hp -= playerStats.bulletDamage;
-              if (enemy.hp <= 0) {
-                enemies.splice(i, 1);
+          for (const direction of laserDirections) {
+            const startX = player.x;
+            const startY = player.y;
+            const end = getLaserEndPoint(startX, startY, direction.dx, direction.dy);
+            const laser = {
+              startX,
+              startY,
+              endX: end.x,
+              endY: end.y,
+              width: 16,
+              life: 0.35,
+              maxLife: 0.35,
+            };
+            lasers.push(laser);
+
+            for (let i = enemies.length - 1; i >= 0; i--) {
+              const enemy = enemies[i];
+              const distance = pointToSegmentDistance(enemy.x, enemy.y, laser.startX, laser.startY, laser.endX, laser.endY);
+              if (distance <= enemy.size / 2 + laser.width / 2) {
+                enemy.hp -= playerStats.bulletDamage;
+                if (enemy.hp <= 0) {
+                  enemies.splice(i, 1);
+                }
               }
             }
           }
@@ -720,8 +725,18 @@
       window.addEventListener("keydown", (event) => {
         const key = event.key.toLowerCase();
 
-        if (["w", "a", "s", "d", " "].includes(key)) {
+        if (["w", "a", "s", "d", " ", "q", "1", "2", "3"].includes(key)) {
           event.preventDefault();
+        }
+
+        if (key === "q") {
+          triggerDevWaveUpgrade();
+          return;
+        }
+
+        if (upgradeMenu.active && ["1", "2", "3"].includes(key)) {
+          chooseUpgrade(Number(key) - 1);
+          return;
         }
 
         setKeyState(key, true);
@@ -779,10 +794,6 @@
         }
       });
 
-      devNextWaveButton.addEventListener("click", () => {
-        triggerDevWaveUpgrade();
-      });
-
       function restartGame() {
         player.x = canvas.width / 2;
         player.y = canvas.height / 2;
@@ -805,6 +816,7 @@
         playerStats.bulletSpeedMultiplier = 1;
         playerStats.shotMode = 1;
         playerStats.hasLaser = false;
+        playerStats.hasLaserAllDirections = false;
         waveState.number = 1;
         waveState.timeLeft = WAVE_DURATION;
         waveState.spawnCooldown = 0.25;
