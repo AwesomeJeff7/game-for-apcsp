@@ -80,7 +80,7 @@
       const PLAYER_ACCEL = 40;
       const PLAYER_FRICTION = 35;
       const PLAYER_SIZE = 28;
-      const BULLET_SPEED = 14;
+      const BULLET_SPEED = 10;
       const SHOT_INTERVAL = 0.11;
       const WAVE_DURATION = 30;
       const ENEMY_SPEED = 1.7;
@@ -128,6 +128,7 @@
       const upgradeMenu = {
         active: false,
         cards: [],
+        hoveredIndex: -1,
       };
 
       let lastFrameTime = 0;
@@ -210,7 +211,7 @@
       }
 
       function getUpgradePool() {
-        return [
+        const pool = [
           {
             key: "damage",
             title: "Damage +1",
@@ -235,31 +236,38 @@
               health = clamp(health + 30, 0, PLAYER_MAX_HEALTH);
             },
           },
-          {
+        ];
+
+        if (playerStats.shotMode < 2) {
+          pool.push({
             key: "shot2",
             title: "2-Way Shot",
             description: "Fire forward + backward.",
             apply: () => {
-              playerStats.shotMode = Math.max(playerStats.shotMode, 2);
+              playerStats.shotMode = 2;
             },
-          },
-          {
+          });
+        } else if (playerStats.shotMode === 2) {
+          pool.push({
             key: "shot3",
             title: "3-Way Shot",
             description: "Spread into three shots.",
             apply: () => {
-              playerStats.shotMode = Math.max(playerStats.shotMode, 3);
+              playerStats.shotMode = 3;
             },
-          },
-          {
+          });
+        } else if (playerStats.shotMode >= 3 && playerStats.shotMode < 8) {
+          pool.push({
             key: "shot8",
             title: "All-Directions",
             description: "Blast in all directions.",
             apply: () => {
               playerStats.shotMode = 8;
             },
-          },
-        ];
+          });
+        }
+
+        return pool;
       }
 
       function beginUpgradeSelection() {
@@ -271,6 +279,7 @@
         }
         upgradeMenu.cards = cards;
         upgradeMenu.active = true;
+        upgradeMenu.hoveredIndex = -1;
       }
 
       function chooseUpgrade(index) {
@@ -279,10 +288,26 @@
         chosen.apply();
         upgradeMenu.active = false;
         upgradeMenu.cards = [];
+        upgradeMenu.hoveredIndex = -1;
         waveState.number += 1;
         waveState.timeLeft = WAVE_DURATION;
         waveState.spawnCooldown = 0.25;
         updateHud();
+      }
+
+      function getUpgradeCardIndexAt(clickX, clickY, now = performance.now()) {
+        const totalWidth = upgradeCard.width * 3 + upgradeCard.gap * 2;
+        const startX = (canvas.width - totalWidth) / 2;
+        const baseY = upgradeCard.y;
+        for (let i = 0; i < upgradeMenu.cards.length; i++) {
+          const x = startX + i * (upgradeCard.width + upgradeCard.gap);
+          const isHovered = upgradeMenu.hoveredIndex === i;
+          const bobOffset = isHovered ? Math.sin(now * 0.01) * 6 - 8 : 0;
+          const y = baseY + bobOffset;
+          const inside = clickX >= x && clickX <= x + upgradeCard.width && clickY >= y && clickY <= y + upgradeCard.height;
+          if (inside) return i;
+        }
+        return -1;
       }
 
       function drawSkyBackground() {
@@ -382,21 +407,24 @@
 
         upgradeMenu.cards.forEach((card, index) => {
           const x = startX + index * (upgradeCard.width + upgradeCard.gap);
+          const isHovered = upgradeMenu.hoveredIndex === index;
+          const bobOffset = isHovered ? Math.sin(performance.now() * 0.01) * 6 - 8 : 0;
+          const cardY = y + bobOffset;
           ctx.fillStyle = "rgba(20, 40, 62, 0.95)";
-          ctx.fillRect(x, y, upgradeCard.width, upgradeCard.height);
-          ctx.strokeStyle = "rgba(125, 218, 255, 0.95)";
-          ctx.lineWidth = 2;
-          ctx.strokeRect(x, y, upgradeCard.width, upgradeCard.height);
+          ctx.fillRect(x, cardY, upgradeCard.width, upgradeCard.height);
+          ctx.strokeStyle = isHovered ? "rgba(175, 245, 255, 1)" : "rgba(125, 218, 255, 0.95)";
+          ctx.lineWidth = isHovered ? 3 : 2;
+          ctx.strokeRect(x, cardY, upgradeCard.width, upgradeCard.height);
 
           ctx.fillStyle = "#9be6ff";
           ctx.font = "700 18px system-ui, sans-serif";
-          ctx.fillText(card.title, x + upgradeCard.width / 2, y + 42);
+          ctx.fillText(card.title, x + upgradeCard.width / 2, cardY + 42);
           ctx.fillStyle = "#e9f6ff";
           ctx.font = "14px system-ui, sans-serif";
-          ctx.fillText(card.description, x + upgradeCard.width / 2, y + 82);
+          ctx.fillText(card.description, x + upgradeCard.width / 2, cardY + 82);
           ctx.fillStyle = "#8de39a";
           ctx.font = "700 13px system-ui, sans-serif";
-          ctx.fillText("Click to choose", x + upgradeCard.width / 2, y + upgradeCard.height - 18);
+          ctx.fillText("Click to choose", x + upgradeCard.width / 2, cardY + upgradeCard.height - 18);
         });
         ctx.textAlign = "left";
       }
@@ -602,22 +630,27 @@
         }
       });
 
+      canvas.addEventListener("mousemove", (event) => {
+        if (!upgradeMenu.active) {
+          upgradeMenu.hoveredIndex = -1;
+          return;
+        }
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = event.clientX - rect.left;
+        const mouseY = event.clientY - rect.top;
+        upgradeMenu.hoveredIndex = getUpgradeCardIndexAt(mouseX, mouseY);
+      });
+
       canvas.addEventListener("click", (event) => {
         const rect = canvas.getBoundingClientRect();
         const clickX = event.clientX - rect.left;
         const clickY = event.clientY - rect.top;
 
         if (upgradeMenu.active) {
-          const totalWidth = upgradeCard.width * 3 + upgradeCard.gap * 2;
-          const startX = (canvas.width - totalWidth) / 2;
-          const y = upgradeCard.y;
-          for (let i = 0; i < upgradeMenu.cards.length; i++) {
-            const x = startX + i * (upgradeCard.width + upgradeCard.gap);
-            const inside = clickX >= x && clickX <= x + upgradeCard.width && clickY >= y && clickY <= y + upgradeCard.height;
-            if (inside) {
-              chooseUpgrade(i);
-              return;
-            }
+          const clickedIndex = getUpgradeCardIndexAt(clickX, clickY);
+          if (clickedIndex !== -1) {
+            chooseUpgrade(clickedIndex);
+            return;
           }
         }
 
