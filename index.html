@@ -127,6 +127,7 @@
         shotMode: 1, // 1=single, 2=double, 3=triple, 8=all directions
         hasLaser: false,
         hasLaserAllDirections: false,
+        hasAutoLaser: false,
       };
 
       const upgradeMenu = {
@@ -236,6 +237,26 @@
         return [base];
       }
 
+      function getClosestEnemyDirection() {
+        if (enemies.length === 0) {
+          return { dx: player.aimDx || 1, dy: player.aimDy || 0 };
+        }
+        let closest = enemies[0];
+        let closestDistance = Math.hypot(closest.x - player.x, closest.y - player.y);
+        for (let i = 1; i < enemies.length; i++) {
+          const enemy = enemies[i];
+          const distance = Math.hypot(enemy.x - player.x, enemy.y - player.y);
+          if (distance < closestDistance) {
+            closest = enemy;
+            closestDistance = distance;
+          }
+        }
+        const dx = closest.x - player.x;
+        const dy = closest.y - player.y;
+        const length = Math.hypot(dx, dy) || 1;
+        return { dx: dx / length, dy: dy / length };
+      }
+
       function getUpgradePool() {
         const pool = [
           {
@@ -311,6 +332,17 @@
             description: "Laser fires all directions.",
             apply: () => {
               playerStats.hasLaserAllDirections = true;
+            },
+          });
+        }
+
+        if (playerStats.hasLaserAllDirections && !playerStats.hasAutoLaser) {
+          pool.push({
+            key: "autolaser",
+            title: "Auto Laser",
+            description: "Laser auto-targets nearest enemy.",
+            apply: () => {
+              playerStats.hasAutoLaser = true;
             },
           });
         }
@@ -606,9 +638,13 @@
 
       function shoot() {
         if (playerStats.hasLaser) {
-          const laserDirections = playerStats.hasLaserAllDirections
-            ? Array.from({ length: 8 }, (_, i) => rotateVector(1, 0, (Math.PI * 2 * i) / 8))
-            : [{ dx: player.aimDx || 1, dy: player.aimDy || 0 }];
+          let laserDirections = [{ dx: player.aimDx || 1, dy: player.aimDy || 0 }];
+          if (playerStats.hasAutoLaser) {
+            laserDirections = [getClosestEnemyDirection()];
+          } else if (playerStats.hasLaserAllDirections) {
+            laserDirections = Array.from({ length: 8 }, (_, i) => rotateVector(1, 0, (Math.PI * 2 * i) / 8));
+          }
+          const hitEnemies = new Set();
 
           for (const direction of laserDirections) {
             const startX = player.x;
@@ -627,9 +663,11 @@
 
             for (let i = enemies.length - 1; i >= 0; i--) {
               const enemy = enemies[i];
+              if (hitEnemies.has(enemy)) continue;
               const distance = pointToSegmentDistance(enemy.x, enemy.y, laser.startX, laser.startY, laser.endX, laser.endY);
               if (distance <= enemy.size / 2 + laser.width / 2) {
                 enemy.hp -= playerStats.bulletDamage;
+                hitEnemies.add(enemy);
                 if (enemy.hp <= 0) {
                   enemies.splice(i, 1);
                 }
@@ -817,6 +855,7 @@
         playerStats.shotMode = 1;
         playerStats.hasLaser = false;
         playerStats.hasLaserAllDirections = false;
+        playerStats.hasAutoLaser = false;
         waveState.number = 1;
         waveState.timeLeft = WAVE_DURATION;
         waveState.spawnCooldown = 0.25;
