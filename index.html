@@ -59,6 +59,16 @@
         font-size: 0.95rem;
         color: #17365e;
       }
+
+      .dev-skip {
+        font: 600 0.82rem system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        padding: 0.35rem 0.7rem;
+        border-radius: 8px;
+        border: 1px solid #2f5d8c;
+        background: rgba(255, 255, 255, 0.9);
+        color: #113459;
+        cursor: pointer;
+      }
     </style>
   </head>
   <body>
@@ -68,12 +78,14 @@
       <canvas id="game" width="640" height="640" aria-label="Shooting game"></canvas>
       <p class="hint">Move: <strong>W A S D</strong> (hold) · Shoot: <strong>Space</strong></p>
       <p class="score" id="score">Enemies on screen: 0</p>
+      <button class="dev-skip" id="dev-next-wave" type="button">DEV: Next Wave Upgrade</button>
     </main>
 
     <script>
       const canvas = document.getElementById("game");
       const scoreLabel = document.getElementById("score");
       const waveLabel = document.getElementById("wave");
+      const devNextWaveButton = document.getElementById("dev-next-wave");
       const ctx = canvas.getContext("2d");
 
       const PLAYER_MAX_SPEED = 8.5;
@@ -315,6 +327,11 @@
         upgradeMenu.cards = cards;
         upgradeMenu.active = true;
         upgradeMenu.hoveredIndex = -1;
+      }
+
+      function triggerDevWaveUpgrade() {
+        if (health <= 0 || upgradeMenu.active) return;
+        beginUpgradeSelection();
       }
 
       function chooseUpgrade(index) {
@@ -760,6 +777,10 @@
         if (clickedRestart) {
           restartGame();
         }
+      });
+
+      devNextWaveButton.addEventListener("click", () => {
+        triggerDevWaveUpgrade();
       });
 
       function restartGame() {
