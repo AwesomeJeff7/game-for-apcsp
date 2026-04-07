@@ -328,7 +328,7 @@
         if (playerStats.hasLaser && !playerStats.hasLaserAllDirections && waveState.number >= 10) {
           pool.push({
             key: "laser8",
-            title: "Laser All-Way",
+            title: "M3GA laser",
             description: "Laser fires all directions.",
             apply: () => {
               playerStats.hasLaserAllDirections = true;
@@ -342,6 +342,7 @@
             title: "Auto Laser",
             description: "Laser auto-targets nearest enemy.",
             apply: () => {
+              SHOT_INTERVAL = 1;
               playerStats.hasAutoLaser = true;
             },
           });
