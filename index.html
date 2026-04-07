@@ -1,358 +1,366 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Smooth Movement + Shooting</title>
-    <style>
-      body {
-        margin: 0;
-        min-height: 100vh;
-        display: grid;
-        place-items: center;
-        background: linear-gradient(#75b7ff, #cbe8ff);
-        color: #0f2440;
-        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-      }
+<script>
+const canvas = document.getElementById("game");
+const scoreLabel = document.getElementById("score");
+const waveLabel = document.getElementById("wave");
+const ctx = canvas.getContext("2d");
 
-      .wave-banner {
-        position: fixed;
-        top: 14px;
-        left: 50%;
-        transform: translateX(-50%);
-        margin: 0;
-        padding: 0.35rem 0.8rem;
-        border-radius: 999px;
-        font-weight: 700;
-        color: #12365f;
-        background: rgba(255, 255, 255, 0.66);
-        border: 1px solid rgba(47, 93, 140, 0.35);
-        animation: bob 2.2s ease-in-out infinite;
-        backdrop-filter: blur(2px);
-      }
+const PLAYER_MAX_SPEED = 8.5;
+const PLAYER_ACCEL = 40;
+const PLAYER_FRICTION = 35;
+const PLAYER_SIZE = 28;
+const BULLET_SPEED = 14;
+const WAVE_DURATION = 30;
+const ENEMY_SPEED = 1.7;
 
-      @keyframes bob {
-        0%,
-        100% {
-          transform: translateX(-50%) translateY(0);
-        }
-        50% {
-          transform: translateX(-50%) translateY(-6px);
-        }
-      }
+const DIRECTIONS = {
+  up: { dx: 0, dy: -1 },
+  left: { dx: -1, dy: 0 },
+  down: { dx: 0, dy: 1 },
+  right: { dx: 1, dy: 0 },
+};
 
-      .game-shell {
-        display: grid;
-        gap: 0.75rem;
-        justify-items: center;
-      }
+const player = {
+  x: canvas.width / 2,
+  y: canvas.height / 2,
+  vx: 0,
+  vy: 0,
+  facing: "up",
+  color: "#ffcf4a",
+};
 
-      canvas {
-        border: 2px solid #2f5d8c;
-        background: linear-gradient(#6fb2ff 0%, #89c2ff 45%, #cfe9ff 100%);
-        box-shadow: 0 12px 28px rgba(22, 54, 93, 0.25);
-      }
+const input = { up: false, left: false, down: false, right: false };
+const bullets = [];
+const enemies = [];
+const clouds = [];
 
-      .hint,
-      .score {
-        margin: 0;
-        font-size: 0.95rem;
-        color: #17365e;
-      }
-    </style>
-  </head>
-  <body>
-    <p class="wave-banner" id="wave">Wave 1 · 30s</p>
+// 🌩️ NEW
+const stormClouds = [];
+const lightningStrikes = [];
+let stormSpawnTimer = 0;
 
-    <main class="game-shell">
-      <canvas id="game" width="640" height="640" aria-label="Shooting game"></canvas>
-      <p class="hint">Move: <strong>W A S D</strong> (hold) · Shoot: <strong>Space</strong></p>
-      <p class="score" id="score">Enemies on screen: 0</p>
-    </main>
+const waveState = {
+  number: 1,
+  timeLeft: WAVE_DURATION,
+  spawnCooldown: 0.4,
+};
 
-    <script>
-      const canvas = document.getElementById("game");
-      const scoreLabel = document.getElementById("score");
-      const waveLabel = document.getElementById("wave");
-      const ctx = canvas.getContext("2d");
+let lastFrameTime = 0;
 
-      const PLAYER_MAX_SPEED = 8.5;
-      const PLAYER_ACCEL = 40;
-      const PLAYER_FRICTION = 35;
-      const PLAYER_SIZE = 28;
-      const BULLET_SPEED = 14;
-      const WAVE_DURATION = 30;
-      const ENEMY_SPEED = 1.7;
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
 
-      const DIRECTIONS = {
-        up: { dx: 0, dy: -1 },
-        left: { dx: -1, dy: 0 },
-        down: { dx: 0, dy: 1 },
-        right: { dx: 1, dy: 0 },
-      };
+function createClouds(count) {
+  clouds.length = 0;
+  for (let i = 0; i < count; i++) {
+    clouds.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      size: 14 + Math.random() * 26,
+      drift: 5 + Math.random() * 12,
+    });
+  }
+}
 
-      const player = {
-        x: canvas.width / 2,
-        y: canvas.height / 2,
-        vx: 0,
-        vy: 0,
-        facing: "up",
-        color: "#ffcf4a",
-      };
+// 🌩️ SPAWN STORM CLOUD
+function spawnStormCloud() {
+  const fromLeft = Math.random() < 0.5;
 
-      const input = { up: false, left: false, down: false, right: false };
-      const bullets = [];
-      const enemies = [];
-      const clouds = [];
+  stormClouds.push({
+    x: fromLeft ? -80 : canvas.width + 80,
+    y: 50 + Math.random() * 120,
+    vx: fromLeft ? 1 : -1,
+    speed: 0.8 + Math.random() * 0.5,
+    size: 60,
+    lightningTimer: 3
+  });
+}
 
-      const waveState = {
-        number: 1,
-        timeLeft: WAVE_DURATION,
-        spawnCooldown: 0.4,
-      };
+function spawnEdgeEnemy() {
+  const edge = Math.floor(Math.random() * 4);
+  let x = 0;
+  let y = 0;
 
-      let lastFrameTime = 0;
+  if (edge === 0) {
+    x = Math.random() * canvas.width;
+    y = -16;
+  } else if (edge === 1) {
+    x = canvas.width + 16;
+    y = Math.random() * canvas.height;
+  } else if (edge === 2) {
+    x = Math.random() * canvas.width;
+    y = canvas.height + 16;
+  } else {
+    x = -16;
+    y = Math.random() * canvas.height;
+  }
 
-      function clamp(value, min, max) {
-        return Math.max(min, Math.min(max, value));
-      }
+  enemies.push({ x, y, size: 22, speed: ENEMY_SPEED + waveState.number * 0.07 });
+}
 
-      function createClouds(count) {
-        clouds.length = 0;
-        for (let i = 0; i < count; i++) {
-          clouds.push({
-            x: Math.random() * canvas.width,
-            y: Math.random() * canvas.height,
-            size: 14 + Math.random() * 26,
-            drift: 5 + Math.random() * 12,
-          });
-        }
-      }
+function drawSkyBackground() {
+  for (const cloud of clouds) {
+    ctx.fillStyle = "rgba(255,255,255,0.88)";
+    ctx.fillRect(cloud.x, cloud.y, cloud.size, cloud.size);
+    ctx.fillRect(cloud.x + cloud.size * 0.8, cloud.y + 4, cloud.size * 0.9, cloud.size * 0.9);
+    ctx.fillRect(cloud.x + cloud.size * 0.35, cloud.y - cloud.size * 0.35, cloud.size, cloud.size);
+  }
+}
 
-      function spawnEdgeEnemy() {
-        const edge = Math.floor(Math.random() * 4);
-        let x = 0;
-        let y = 0;
+// 🌩️ DRAW STORM CLOUDS
+function drawStormClouds() {
+  for (const cloud of stormClouds) {
+    ctx.fillStyle = "#555";
+    ctx.fillRect(cloud.x - cloud.size / 2, cloud.y - cloud.size / 2, cloud.size, cloud.size);
+    ctx.fillRect(cloud.x, cloud.y - 10, cloud.size * 0.8, cloud.size * 0.8);
+  }
+}
 
-        if (edge === 0) {
-          x = Math.random() * canvas.width;
-          y = -16;
-        } else if (edge === 1) {
-          x = canvas.width + 16;
-          y = Math.random() * canvas.height;
-        } else if (edge === 2) {
-          x = Math.random() * canvas.width;
-          y = canvas.height + 16;
-        } else {
-          x = -16;
-          y = Math.random() * canvas.height;
-        }
+// ⚡ DRAW LIGHTNING
+function drawLightning() {
+  ctx.strokeStyle = "yellow";
+  ctx.lineWidth = 3;
 
-        enemies.push({ x, y, size: 22, speed: ENEMY_SPEED + waveState.number * 0.07 });
-      }
+  for (const bolt of lightningStrikes) {
+    ctx.beginPath();
+    ctx.moveTo(bolt.x, bolt.y);
+    ctx.lineTo(bolt.x + (Math.random() - 0.5) * 10, bolt.y + 40);
+    ctx.lineTo(bolt.x + (Math.random() - 0.5) * 20, bolt.y + 80);
+    ctx.stroke();
+  }
+}
 
-      function drawSkyBackground() {
-        for (const cloud of clouds) {
-          ctx.fillStyle = "rgba(255,255,255,0.88)";
-          ctx.fillRect(cloud.x, cloud.y, cloud.size, cloud.size);
-          ctx.fillRect(cloud.x + cloud.size * 0.8, cloud.y + 4, cloud.size * 0.9, cloud.size * 0.9);
-          ctx.fillRect(cloud.x + cloud.size * 0.35, cloud.y - cloud.size * 0.35, cloud.size, cloud.size);
-        }
-      }
+function drawPlayer() {
+  const px = player.x - PLAYER_SIZE / 2;
+  const py = player.y - PLAYER_SIZE / 2;
 
-      function drawPlayer() {
-        const px = player.x - PLAYER_SIZE / 2;
-        const py = player.y - PLAYER_SIZE / 2;
+  ctx.fillStyle = player.color;
+  ctx.fillRect(px, py, PLAYER_SIZE, PLAYER_SIZE);
 
-        ctx.fillStyle = player.color;
-        ctx.fillRect(px, py, PLAYER_SIZE, PLAYER_SIZE);
+  const facing = DIRECTIONS[player.facing];
+  ctx.fillStyle = "#0b0f17";
+  ctx.fillRect(player.x + facing.dx * 11 - 3, player.y + facing.dy * 11 - 3, 6, 6);
+}
 
-        const facing = DIRECTIONS[player.facing];
-        ctx.fillStyle = "#0b0f17";
-        ctx.fillRect(player.x + facing.dx * 11 - 3, player.y + facing.dy * 11 - 3, 6, 6);
-      }
+function drawEnemies() {
+  ctx.fillStyle = "#ff5a7d";
+  for (const enemy of enemies) {
+    ctx.fillRect(enemy.x - enemy.size / 2, enemy.y - enemy.size / 2, enemy.size, enemy.size);
+  }
+}
 
-      function drawEnemies() {
-        ctx.fillStyle = "#ff5a7d";
-        for (const enemy of enemies) {
-          ctx.fillRect(enemy.x - enemy.size / 2, enemy.y - enemy.size / 2, enemy.size, enemy.size);
-        }
-      }
+function drawBullets() {
+  ctx.fillStyle = "#62f4ff";
+  for (const bullet of bullets) {
+    ctx.beginPath();
+    ctx.arc(bullet.x, bullet.y, 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
 
-      function drawBullets() {
-        ctx.fillStyle = "#62f4ff";
-        for (const bullet of bullets) {
-          ctx.beginPath();
-          ctx.arc(bullet.x, bullet.y, 5, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
+function updateHud() {
+  scoreLabel.textContent = `Enemies on screen: ${enemies.length}`;
+  waveLabel.textContent = `Wave ${waveState.number} · ${Math.ceil(waveState.timeLeft)}s`;
+}
 
-      function updateHud() {
-        scoreLabel.textContent = `Enemies on screen: ${enemies.length}`;
-        waveLabel.textContent = `Wave ${waveState.number} · ${Math.ceil(waveState.timeLeft)}s`;
-      }
+function render() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawSkyBackground();
+  drawStormClouds(); // NEW
+  drawLightning();   // NEW
+  drawEnemies();
+  drawBullets();
+  drawPlayer();
+}
 
-      function render() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        drawSkyBackground();
-        drawEnemies();
-        drawBullets();
-        drawPlayer();
-      }
+function updatePlayer(dt) {
+  let inputX = 0;
+  let inputY = 0;
 
-      function updatePlayer(dt) {
-        let inputX = 0;
-        let inputY = 0;
+  if (input.left) inputX -= 1;
+  if (input.right) inputX += 1;
+  if (input.up) inputY -= 1;
+  if (input.down) inputY += 1;
 
-        if (input.left) inputX -= 1;
-        if (input.right) inputX += 1;
-        if (input.up) inputY -= 1;
-        if (input.down) inputY += 1;
+  let targetVx = 0;
+  let targetVy = 0;
 
-        let targetVx = 0;
-        let targetVy = 0;
+  if (inputX !== 0 || inputY !== 0) {
+    const length = Math.hypot(inputX, inputY);
+    targetVx = (inputX / length) * PLAYER_MAX_SPEED;
+    targetVy = (inputY / length) * PLAYER_MAX_SPEED;
 
-        if (inputX !== 0 || inputY !== 0) {
-          const length = Math.hypot(inputX, inputY);
-          targetVx = (inputX / length) * PLAYER_MAX_SPEED;
-          targetVy = (inputY / length) * PLAYER_MAX_SPEED;
+    if (Math.abs(inputX) >= Math.abs(inputY)) {
+      player.facing = inputX >= 0 ? "right" : "left";
+    } else {
+      player.facing = inputY >= 0 ? "down" : "up";
+    }
+  }
 
-          if (Math.abs(inputX) >= Math.abs(inputY)) {
-            player.facing = inputX >= 0 ? "right" : "left";
-          } else {
-            player.facing = inputY >= 0 ? "down" : "up";
-          }
-        }
+  const accel = (inputX !== 0 || inputY !== 0 ? PLAYER_ACCEL : PLAYER_FRICTION) * dt;
+  const deltaVx = targetVx - player.vx;
+  const deltaVy = targetVy - player.vy;
+  const deltaMagnitude = Math.hypot(deltaVx, deltaVy);
 
-        const accel = (inputX !== 0 || inputY !== 0 ? PLAYER_ACCEL : PLAYER_FRICTION) * dt;
-        const deltaVx = targetVx - player.vx;
-        const deltaVy = targetVy - player.vy;
-        const deltaMagnitude = Math.hypot(deltaVx, deltaVy);
+  if (deltaMagnitude > accel && deltaMagnitude !== 0) {
+    player.vx += (deltaVx / deltaMagnitude) * accel;
+    player.vy += (deltaVy / deltaMagnitude) * accel;
+  } else {
+    player.vx = targetVx;
+    player.vy = targetVy;
+  }
 
-        if (deltaMagnitude > accel && deltaMagnitude !== 0) {
-          player.vx += (deltaVx / deltaMagnitude) * accel;
-          player.vy += (deltaVy / deltaMagnitude) * accel;
-        } else {
-          player.vx = targetVx;
-          player.vy = targetVy;
-        }
+  player.x = clamp(player.x + player.vx, PLAYER_SIZE / 2, canvas.width - PLAYER_SIZE / 2);
+  player.y = clamp(player.y + player.vy, PLAYER_SIZE / 2, canvas.height - PLAYER_SIZE / 2);
+}
 
-        player.x = clamp(player.x + player.vx, PLAYER_SIZE / 2, canvas.width - PLAYER_SIZE / 2);
-        player.y = clamp(player.y + player.vy, PLAYER_SIZE / 2, canvas.height - PLAYER_SIZE / 2);
-      }
+function updateEnemies(dt) {
+  for (const enemy of enemies) {
+    const dx = player.x - enemy.x;
+    const dy = player.y - enemy.y;
+    const distance = Math.hypot(dx, dy) || 1;
+    enemy.x += (dx / distance) * enemy.speed * dt * 60;
+    enemy.y += (dy / distance) * enemy.speed * dt * 60;
+  }
+}
 
-      function updateEnemies(dt) {
-        for (const enemy of enemies) {
-          const dx = player.x - enemy.x;
-          const dy = player.y - enemy.y;
-          const distance = Math.hypot(dx, dy) || 1;
-          enemy.x += (dx / distance) * enemy.speed * dt * 60;
-          enemy.y += (dy / distance) * enemy.speed * dt * 60;
-        }
-      }
+function shoot() {
+  const direction = DIRECTIONS[player.facing];
+  bullets.push({
+    x: player.x + direction.dx * (PLAYER_SIZE / 2 + 8),
+    y: player.y + direction.dy * (PLAYER_SIZE / 2 + 8),
+    vx: direction.dx * BULLET_SPEED,
+    vy: direction.dy * BULLET_SPEED,
+  });
+}
 
-      function shoot() {
-        const direction = DIRECTIONS[player.facing];
-        bullets.push({
-          x: player.x + direction.dx * (PLAYER_SIZE / 2 + 8),
-          y: player.y + direction.dy * (PLAYER_SIZE / 2 + 8),
-          vx: direction.dx * BULLET_SPEED,
-          vy: direction.dy * BULLET_SPEED,
-        });
-      }
+function updateBulletsAndHits(dt) {
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const bullet = bullets[i];
+    bullet.x += bullet.vx * dt * 60;
+    bullet.y += bullet.vy * dt * 60;
 
-      function updateBulletsAndHits(dt) {
-        for (let i = bullets.length - 1; i >= 0; i--) {
-          const bullet = bullets[i];
-          bullet.x += bullet.vx * dt * 60;
-          bullet.y += bullet.vy * dt * 60;
+    if (bullet.x < -8 || bullet.x > canvas.width + 8 || bullet.y < -8 || bullet.y > canvas.height + 8) {
+      bullets.splice(i, 1);
+      continue;
+    }
 
-          if (bullet.x < -8 || bullet.x > canvas.width + 8 || bullet.y < -8 || bullet.y > canvas.height + 8) {
-            bullets.splice(i, 1);
-            continue;
-          }
+    const enemyIndex = enemies.findIndex((enemy) =>
+      Math.hypot(bullet.x - enemy.x, bullet.y - enemy.y) < enemy.size / 2 + 4
+    );
 
-          const enemyIndex = enemies.findIndex((enemy) => Math.hypot(bullet.x - enemy.x, bullet.y - enemy.y) < enemy.size / 2 + 4);
-          if (enemyIndex !== -1) {
-            enemies.splice(enemyIndex, 1);
-            bullets.splice(i, 1);
-          }
-        }
-      }
+    if (enemyIndex !== -1) {
+      enemies.splice(enemyIndex, 1);
+      bullets.splice(i, 1);
+    }
+  }
+}
 
-      function updateWave(dt) {
-        waveState.timeLeft -= dt;
-        waveState.spawnCooldown -= dt;
+// 🌩️ UPDATE STORM CLOUDS + LIGHTNING
+function updateStormClouds(dt) {
+  stormSpawnTimer -= dt;
 
-        if (waveState.spawnCooldown <= 0) {
-          spawnEdgeEnemy();
-          const baseSpawnInterval = Math.max(0.55, 1.4 - waveState.number * 0.05);
-          waveState.spawnCooldown = baseSpawnInterval;
-        }
+  if (stormSpawnTimer <= 0) {
+    spawnStormCloud();
+    stormSpawnTimer = 10;
+  }
 
-        if (waveState.timeLeft <= 0) {
-          waveState.number += 1;
-          waveState.timeLeft = WAVE_DURATION;
-          waveState.spawnCooldown = 0.25;
-        }
-      }
+  for (let i = stormClouds.length - 1; i >= 0; i--) {
+    const cloud = stormClouds[i];
 
-      function updateClouds(dt) {
-        for (const cloud of clouds) {
-          cloud.x += cloud.drift * dt;
-          if (cloud.x > canvas.width + cloud.size * 2) {
-            cloud.x = -cloud.size * 2;
-            cloud.y = Math.random() * canvas.height;
-          }
-        }
-      }
+    cloud.x += cloud.vx * cloud.speed * dt * 60;
 
-      function setKeyState(key, value) {
-        if (key === "w") input.up = value;
-        if (key === "a") input.left = value;
-        if (key === "s") input.down = value;
-        if (key === "d") input.right = value;
-      }
-
-      window.addEventListener("keydown", (event) => {
-        const key = event.key.toLowerCase();
-
-        if (["w", "a", "s", "d", " "].includes(key)) {
-          event.preventDefault();
-        }
-
-        setKeyState(key, true);
-        if (key === " ") shoot();
+    cloud.lightningTimer -= dt;
+    if (cloud.lightningTimer <= 0) {
+      lightningStrikes.push({
+        x: cloud.x,
+        y: cloud.y + cloud.size / 2,
+        life: 0.2
       });
+      cloud.lightningTimer = 3;
+    }
 
-      window.addEventListener("keyup", (event) => {
-        const key = event.key.toLowerCase();
-        setKeyState(key, false);
-      });
+    if (cloud.x < -120 || cloud.x > canvas.width + 120) {
+      stormClouds.splice(i, 1);
+    }
+  }
 
-      function gameLoop(timestamp) {
-        if (lastFrameTime === 0) {
-          lastFrameTime = timestamp;
-        }
+  for (let i = lightningStrikes.length - 1; i >= 0; i--) {
+    lightningStrikes[i].life -= dt;
+    if (lightningStrikes[i].life <= 0) {
+      lightningStrikes.splice(i, 1);
+    }
+  }
+}
 
-        const dt = Math.min((timestamp - lastFrameTime) / 1000, 0.05);
-        lastFrameTime = timestamp;
+function updateWave(dt) {
+  waveState.timeLeft -= dt;
+  waveState.spawnCooldown -= dt;
 
-        updateWave(dt);
-        updateClouds(dt);
-        updatePlayer(dt);
-        updateEnemies(dt);
-        updateBulletsAndHits(dt);
-        updateHud();
-        render();
+  if (waveState.spawnCooldown <= 0) {
+    spawnEdgeEnemy();
+    waveState.spawnCooldown = Math.max(0.55, 1.4 - waveState.number * 0.05);
+  }
 
-        requestAnimationFrame(gameLoop);
-      }
+  if (waveState.timeLeft <= 0) {
+    waveState.number += 1;
+    waveState.timeLeft = WAVE_DURATION;
+    waveState.spawnCooldown = 0.25;
+  }
+}
 
-      createClouds(22);
-      updateHud();
-      requestAnimationFrame(gameLoop);
-    </script>
-  </body>
-</html>
+function updateClouds(dt) {
+  for (const cloud of clouds) {
+    cloud.x += cloud.drift * dt;
+    if (cloud.x > canvas.width + cloud.size * 2) {
+      cloud.x = -cloud.size * 2;
+      cloud.y = Math.random() * canvas.height;
+    }
+  }
+}
+
+function setKeyState(key, value) {
+  if (key === "w") input.up = value;
+  if (key === "a") input.left = value;
+  if (key === "s") input.down = value;
+  if (key === "d") input.right = value;
+}
+
+window.addEventListener("keydown", (event) => {
+  const key = event.key.toLowerCase();
+
+  if (["w", "a", "s", "d", " "].includes(key)) {
+    event.preventDefault();
+  }
+
+  setKeyState(key, true);
+  if (key === " ") shoot();
+});
+
+window.addEventListener("keyup", (event) => {
+  const key = event.key.toLowerCase();
+  setKeyState(key, false);
+});
+
+function gameLoop(timestamp) {
+  if (lastFrameTime === 0) lastFrameTime = timestamp;
+
+  const dt = Math.min((timestamp - lastFrameTime) / 1000, 0.05);
+  lastFrameTime = timestamp;
+
+  updateWave(dt);
+  updateClouds(dt);
+  updateStormClouds(dt); // NEW
+  updatePlayer(dt);
+  updateEnemies(dt);
+  updateBulletsAndHits(dt);
+  updateHud();
+  render();
+
+  requestAnimationFrame(gameLoop);
+}
+
+createClouds(22);
+updateHud();
+requestAnimationFrame(gameLoop);
+</script>
