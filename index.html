@@ -102,6 +102,8 @@
         vx: 0,
         vy: 0,
         facing: "up",
+        aimDx: 0,
+        aimDy: -1,
         color: "#ffcf4a",
       };
 
@@ -121,6 +123,10 @@
       let enemyDamageCooldown = 0;
       let healthFlashTimer = 0;
       let shootCooldown = 0;
+      const endScreenButton = {
+        width: 190,
+        height: 46,
+      };
 
       function clamp(value, min, max) {
         return Math.max(min, Math.min(max, value));
@@ -172,9 +178,16 @@
       function drawPlayer() {
         const px = player.x - PLAYER_SIZE / 2;
         const py = player.y - PLAYER_SIZE / 2;
+        const flashStrength = clamp(healthFlashTimer / HIT_FLASH_DURATION, 0, 1);
 
         ctx.fillStyle = player.color;
         ctx.fillRect(px, py, PLAYER_SIZE, PLAYER_SIZE);
+
+        if (flashStrength > 0) {
+          const pulse = 0.35 + Math.sin(performance.now() * 0.05) * 0.25;
+          ctx.fillStyle = `rgba(255,255,255,${clamp(pulse * flashStrength, 0, 0.8)})`;
+          ctx.fillRect(px, py, PLAYER_SIZE, PLAYER_SIZE);
+        }
 
         const facing = DIRECTIONS[player.facing];
         ctx.fillStyle = "#0b0f17";
@@ -243,6 +256,8 @@
         drawHealthBar();
 
         if (health <= 0) {
+          const buttonX = canvas.width / 2 - endScreenButton.width / 2;
+          const buttonY = canvas.height / 2 + 44;
           ctx.fillStyle = "rgba(0,0,0,0.45)";
           ctx.fillRect(0, 0, canvas.width, canvas.height);
           ctx.fillStyle = "#fff";
@@ -250,7 +265,15 @@
           ctx.font = "700 38px system-ui, sans-serif";
           ctx.fillText("You got zapped", canvas.width / 2, canvas.height / 2 - 10);
           ctx.font = "500 18px system-ui, sans-serif";
-          ctx.fillText("Reload to play again", canvas.width / 2, canvas.height / 2 + 24);
+          ctx.fillText("Try again?", canvas.width / 2, canvas.height / 2 + 24);
+
+          ctx.fillStyle = "#47d27a";
+          ctx.fillRect(buttonX, buttonY, endScreenButton.width, endScreenButton.height);
+          ctx.strokeStyle = "rgba(255,255,255,0.85)";
+          ctx.strokeRect(buttonX, buttonY, endScreenButton.width, endScreenButton.height);
+          ctx.fillStyle = "#10361e";
+          ctx.font = "700 20px system-ui, sans-serif";
+          ctx.fillText("Restart", canvas.width / 2, buttonY + 30);
           ctx.textAlign = "left";
         }
       }
@@ -271,6 +294,8 @@
           const length = Math.hypot(inputX, inputY);
           targetVx = (inputX / length) * PLAYER_MAX_SPEED;
           targetVy = (inputY / length) * PLAYER_MAX_SPEED;
+          player.aimDx = inputX / length;
+          player.aimDy = inputY / length;
 
           if (Math.abs(inputX) >= Math.abs(inputY)) {
             player.facing = inputX >= 0 ? "right" : "left";
@@ -319,7 +344,7 @@
       }
 
       function shoot() {
-        const direction = DIRECTIONS[player.facing];
+        const direction = { dx: player.aimDx, dy: player.aimDy };
         bullets.push({
           x: player.x + direction.dx * (PLAYER_SIZE / 2 + 8),
           y: player.y + direction.dy * (PLAYER_SIZE / 2 + 8),
@@ -411,6 +436,45 @@
           input.shoot = false;
         }
       });
+
+      canvas.addEventListener("click", (event) => {
+        if (health > 0) return;
+        const rect = canvas.getBoundingClientRect();
+        const clickX = event.clientX - rect.left;
+        const clickY = event.clientY - rect.top;
+        const buttonX = canvas.width / 2 - endScreenButton.width / 2;
+        const buttonY = canvas.height / 2 + 44;
+        const clickedRestart =
+          clickX >= buttonX &&
+          clickX <= buttonX + endScreenButton.width &&
+          clickY >= buttonY &&
+          clickY <= buttonY + endScreenButton.height;
+
+        if (clickedRestart) {
+          restartGame();
+        }
+      });
+
+      function restartGame() {
+        player.x = canvas.width / 2;
+        player.y = canvas.height / 2;
+        player.vx = 0;
+        player.vy = 0;
+        player.facing = "up";
+        player.aimDx = 0;
+        player.aimDy = -1;
+        health = PLAYER_MAX_HEALTH;
+        healthFlashTimer = 0;
+        enemyDamageCooldown = 0;
+        shootCooldown = 0;
+        bullets.length = 0;
+        enemies.length = 0;
+        waveState.number = 1;
+        waveState.timeLeft = WAVE_DURATION;
+        waveState.spawnCooldown = 0.25;
+        spawnEdgeEnemy();
+        updateHud();
+      }
 
       function gameLoop(timestamp) {
         if (lastFrameTime === 0) {
