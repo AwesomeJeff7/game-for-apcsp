@@ -56,7 +56,7 @@
       .hint,
       .score {
         margin: 0;
-        font-size: 0.95rem;
+         font-size: 0.95rem;
         color: #17365e;
       }
     </style>
@@ -81,8 +81,13 @@
       const PLAYER_FRICTION = 35;
       const PLAYER_SIZE = 28;
       const BULLET_SPEED = 14;
+      const SHOT_INTERVAL = 0.11;
       const WAVE_DURATION = 30;
       const ENEMY_SPEED = 1.7;
+      const PLAYER_MAX_HEALTH = 100;
+      const ENEMY_CONTACT_DAMAGE = 18;
+      const ENEMY_DAMAGE_COOLDOWN = 0.55;
+      const HIT_FLASH_DURATION = 0.22;
 
       const DIRECTIONS = {
         up: { dx: 0, dy: -1 },
@@ -101,6 +106,7 @@
       };
 
       const input = { up: false, left: false, down: false, right: false };
+      const input = { up: false, left: false, down: false, right: false, shoot: false };
       const bullets = [];
       const enemies = [];
       const clouds = [];
@@ -112,6 +118,10 @@
       };
 
       let lastFrameTime = 0;
+      let health = PLAYER_MAX_HEALTH;
+      let enemyDamageCooldown = 0;
+      let healthFlashTimer = 0;
+      let shootCooldown = 0;
 
       function clamp(value, min, max) {
         return Math.max(min, Math.min(max, value));
@@ -137,32 +147,7 @@
         if (edge === 0) {
           x = Math.random() * canvas.width;
           y = -16;
-        } else if (edge === 1) {
-          x = canvas.width + 16;
-          y = Math.random() * canvas.height;
-        } else if (edge === 2) {
-          x = Math.random() * canvas.width;
-          y = canvas.height + 16;
-        } else {
-          x = -16;
-          y = Math.random() * canvas.height;
-        }
-
-        enemies.push({ x, y, size: 22, speed: ENEMY_SPEED + waveState.number * 0.07 });
-      }
-
-      function drawSkyBackground() {
-        for (const cloud of clouds) {
-          ctx.fillStyle = "rgba(255,255,255,0.88)";
-          ctx.fillRect(cloud.x, cloud.y, cloud.size, cloud.size);
-          ctx.fillRect(cloud.x + cloud.size * 0.8, cloud.y + 4, cloud.size * 0.9, cloud.size * 0.9);
-          ctx.fillRect(cloud.x + cloud.size * 0.35, cloud.y - cloud.size * 0.35, cloud.size, cloud.size);
-        }
-      }
-
-      function drawPlayer() {
-        const px = player.x - PLAYER_SIZE / 2;
-        const py = player.y - PLAYER_SIZE / 2;
+@@ -166,124 +175,189 @@
 
         ctx.fillStyle = player.color;
         ctx.fillRect(px, py, PLAYER_SIZE, PLAYER_SIZE);
@@ -188,6 +173,38 @@
         }
       }
 
+      function drawHealthBar() {
+        const barWidth = 190;
+        const barHeight = 18;
+        const x = 14;
+        const y = canvas.height - 34;
+        const hpRatio = clamp(health / PLAYER_MAX_HEALTH, 0, 1);
+        const flashStrength = clamp(healthFlashTimer / HIT_FLASH_DURATION, 0, 1);
+
+        ctx.fillStyle = "rgba(12, 21, 34, 0.8)";
+        ctx.fillRect(x - 5, y - 5, barWidth + 10, barHeight + 10);
+
+        ctx.fillStyle = "rgba(255, 255, 255, 0.18)";
+        ctx.fillRect(x, y, barWidth, barHeight);
+
+        const r = Math.round(235 - hpRatio * 130);
+        const g = Math.round(85 + hpRatio * 135);
+        ctx.fillStyle = `rgb(${r}, ${g}, 90)`;
+        ctx.fillRect(x, y, barWidth * hpRatio, barHeight);
+
+        if (flashStrength > 0) {
+          ctx.fillStyle = `rgba(255, 255, 255, ${0.45 * flashStrength})`;
+          ctx.fillRect(x, y, barWidth, barHeight);
+        }
+
+        ctx.strokeStyle = "rgba(255,255,255,0.7)";
+        ctx.strokeRect(x, y, barWidth, barHeight);
+
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+        ctx.fillText(`HP ${Math.ceil(health)} / ${PLAYER_MAX_HEALTH}`, x + 6, y - 8);
+      }
+
       function updateHud() {
         scoreLabel.textContent = `Enemies on screen: ${enemies.length}`;
         waveLabel.textContent = `Wave ${waveState.number} · ${Math.ceil(waveState.timeLeft)}s`;
@@ -199,6 +216,19 @@
         drawEnemies();
         drawBullets();
         drawPlayer();
+        drawHealthBar();
+
+        if (health <= 0) {
+          ctx.fillStyle = "rgba(0,0,0,0.45)";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.fillStyle = "#fff";
+          ctx.textAlign = "center";
+          ctx.font = "700 38px system-ui, sans-serif";
+          ctx.fillText("You got zapped", canvas.width / 2, canvas.height / 2 - 10);
+          ctx.font = "500 18px system-ui, sans-serif";
+          ctx.fillText("Reload to play again", canvas.width / 2, canvas.height / 2 + 24);
+          ctx.textAlign = "left";
+        }
       }
 
       function updatePlayer(dt) {
@@ -240,6 +270,13 @@
 
         player.x = clamp(player.x + player.vx, PLAYER_SIZE / 2, canvas.width - PLAYER_SIZE / 2);
         player.y = clamp(player.y + player.vy, PLAYER_SIZE / 2, canvas.height - PLAYER_SIZE / 2);
+        player.x = clamp(player.x + player.vx * dt * 60, PLAYER_SIZE / 2, canvas.width - PLAYER_SIZE / 2);
+        player.y = clamp(player.y + player.vy * dt * 60, PLAYER_SIZE / 2, canvas.height - PLAYER_SIZE / 2);
+      }
+
+      function takeDamage(amount) {
+        health = clamp(health - amount, 0, PLAYER_MAX_HEALTH);
+        healthFlashTimer = HIT_FLASH_DURATION;
       }
 
       function updateEnemies(dt) {
@@ -249,6 +286,13 @@
           const distance = Math.hypot(dx, dy) || 1;
           enemy.x += (dx / distance) * enemy.speed * dt * 60;
           enemy.y += (dy / distance) * enemy.speed * dt * 60;
+        }
+
+        enemyDamageCooldown = Math.max(0, enemyDamageCooldown - dt);
+        const touchingEnemy = enemies.some((enemy) => Math.hypot(player.x - enemy.x, player.y - enemy.y) < enemy.size / 2 + PLAYER_SIZE / 2 - 2);
+        if (touchingEnemy && enemyDamageCooldown <= 0) {
+          takeDamage(ENEMY_CONTACT_DAMAGE);
+          enemyDamageCooldown = ENEMY_DAMAGE_COOLDOWN;
         }
       }
 
@@ -260,6 +304,14 @@
           vx: direction.dx * BULLET_SPEED,
           vy: direction.dy * BULLET_SPEED,
         });
+      }
+
+      function updateShooting(dt) {
+        shootCooldown = Math.max(0, shootCooldown - dt);
+        if (input.shoot && shootCooldown <= 0 && health > 0) {
+          shoot();
+          shootCooldown = SHOT_INTERVAL;
+        }
       }
 
       function updateBulletsAndHits(dt) {
@@ -287,17 +339,7 @@
 
         if (waveState.spawnCooldown <= 0) {
           spawnEdgeEnemy();
-          const baseSpawnInterval = Math.max(0.55, 1.4 - waveState.number * 0.05);
-          waveState.spawnCooldown = baseSpawnInterval;
-        }
-
-        if (waveState.timeLeft <= 0) {
-          waveState.number += 1;
-          waveState.timeLeft = WAVE_DURATION;
-          waveState.spawnCooldown = 0.25;
-        }
-      }
-
+@@ -301,58 +375,72 @@
       function updateClouds(dt) {
         for (const cloud of clouds) {
           cloud.x += cloud.drift * dt;
@@ -324,11 +366,19 @@
 
         setKeyState(key, true);
         if (key === " ") shoot();
+        if (key === " ") {
+          input.shoot = true;
+          shootCooldown = 0;
+          updateShooting(0);
+        }
       });
 
       window.addEventListener("keyup", (event) => {
         const key = event.key.toLowerCase();
         setKeyState(key, false);
+        if (key === " ") {
+          input.shoot = false;
+        }
       });
 
       function gameLoop(timestamp) {
@@ -345,13 +395,26 @@
         updateEnemies(dt);
         updateBulletsAndHits(dt);
         updateHud();
+        healthFlashTimer = Math.max(0, healthFlashTimer - dt);
+
+        if (health > 0) {
+          updateWave(dt);
+          updateClouds(dt);
+          updatePlayer(dt);
+          updateEnemies(dt);
+          updateShooting(dt);
+          updateBulletsAndHits(dt);
+          updateHud();
+        }
         render();
 
         requestAnimationFrame(gameLoop);
       }
 
       createClouds(22);
+      spawnEdgeEnemy();
       updateHud();
+      render();
       requestAnimationFrame(gameLoop);
     </script>
   </body>
