@@ -110,6 +110,7 @@
 
       const input = { up: false, left: false, down: false, right: false, shoot: false };
       const bullets = [];
+      const lasers = [];
       const enemies = [];
       const clouds = [];
 
@@ -123,6 +124,7 @@
         bulletDamage: BULLET_BASE_DAMAGE,
         bulletSpeedMultiplier: 1,
         shotMode: 1, // 1=single, 2=double, 3=triple, 8=all directions
+        hasLaser: false,
       };
 
       const upgradeMenu = {
@@ -190,6 +192,28 @@
         const cos = Math.cos(angle);
         const sin = Math.sin(angle);
         return { dx: dx * cos - dy * sin, dy: dx * sin + dy * cos };
+      }
+
+      function getLaserEndPoint(startX, startY, dx, dy) {
+        const tValues = [];
+        if (dx > 0) tValues.push((canvas.width - startX) / dx);
+        if (dx < 0) tValues.push((0 - startX) / dx);
+        if (dy > 0) tValues.push((canvas.height - startY) / dy);
+        if (dy < 0) tValues.push((0 - startY) / dy);
+        const t = Math.min(...tValues.filter((value) => value >= 0));
+        return { x: startX + dx * t, y: startY + dy * t };
+      }
+
+      function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
+        const vx = x2 - x1;
+        const vy = y2 - y1;
+        const wx = px - x1;
+        const wy = py - y1;
+        const lengthSquared = vx * vx + vy * vy || 1;
+        const projection = clamp((wx * vx + wy * vy) / lengthSquared, 0, 1);
+        const nearestX = x1 + projection * vx;
+        const nearestY = y1 + projection * vy;
+        return Math.hypot(px - nearestX, py - nearestY);
       }
 
       function getShotVectors() {
@@ -263,6 +287,17 @@
             description: "Blast in all directions.",
             apply: () => {
               playerStats.shotMode = 8;
+            },
+          });
+        }
+
+        if (playerStats.shotMode === 8 && !playerStats.hasLaser) {
+          pool.push({
+            key: "laser",
+            title: "Laser Beam",
+            description: "Replace bullets with a piercing beam.",
+            apply: () => {
+              playerStats.hasLaser = true;
             },
           });
         }
@@ -360,6 +395,25 @@
         }
       }
 
+      function drawLasers() {
+        for (const laser of lasers) {
+          const alpha = clamp(laser.life / laser.maxLife, 0, 1);
+          ctx.strokeStyle = `rgba(120, 255, 255, ${0.85 * alpha})`;
+          ctx.lineWidth = 8;
+          ctx.beginPath();
+          ctx.moveTo(laser.startX, laser.startY);
+          ctx.lineTo(laser.endX, laser.endY);
+          ctx.stroke();
+
+          ctx.strokeStyle = `rgba(240, 255, 255, ${0.95 * alpha})`;
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(laser.startX, laser.startY);
+          ctx.lineTo(laser.endX, laser.endY);
+          ctx.stroke();
+        }
+      }
+
       function drawHealthBar() {
         const barWidth = 190;
         const barHeight = 18;
@@ -439,6 +493,7 @@
         drawSkyBackground();
         drawEnemies();
         drawBullets();
+        drawLasers();
         drawPlayer();
         drawHealthBar();
         drawUpgradeMenu();
@@ -532,6 +587,36 @@
       }
 
       function shoot() {
+        if (playerStats.hasLaser) {
+          const dirX = player.aimDx || 1;
+          const dirY = player.aimDy || 0;
+          const startX = player.x;
+          const startY = player.y;
+          const end = getLaserEndPoint(startX, startY, dirX, dirY);
+          const laser = {
+            startX,
+            startY,
+            endX: end.x,
+            endY: end.y,
+            width: 16,
+            life: 0.35,
+            maxLife: 0.35,
+          };
+          lasers.push(laser);
+
+          for (let i = enemies.length - 1; i >= 0; i--) {
+            const enemy = enemies[i];
+            const distance = pointToSegmentDistance(enemy.x, enemy.y, laser.startX, laser.startY, laser.endX, laser.endY);
+            if (distance <= enemy.size / 2 + laser.width / 2) {
+              enemy.hp -= playerStats.bulletDamage;
+              if (enemy.hp <= 0) {
+                enemies.splice(i, 1);
+              }
+            }
+          }
+          return;
+        }
+
         for (const direction of getShotVectors()) {
           bullets.push({
             x: player.x + direction.dx * (PLAYER_SIZE / 2 + 8),
@@ -540,6 +625,15 @@
             vy: direction.dy * BULLET_SPEED * playerStats.bulletSpeedMultiplier,
             damage: playerStats.bulletDamage,
           });
+        }
+      }
+
+      function updateLasers(dt) {
+        for (let i = lasers.length - 1; i >= 0; i--) {
+          lasers[i].life -= dt;
+          if (lasers[i].life <= 0) {
+            lasers.splice(i, 1);
+          }
         }
       }
 
@@ -682,12 +776,14 @@
         shootCooldown = 0;
         input.shoot = false;
         bullets.length = 0;
+        lasers.length = 0;
         enemies.length = 0;
         upgradeMenu.active = false;
         upgradeMenu.cards = [];
         playerStats.bulletDamage = BULLET_BASE_DAMAGE;
         playerStats.bulletSpeedMultiplier = 1;
         playerStats.shotMode = 1;
+        playerStats.hasLaser = false;
         waveState.number = 1;
         waveState.timeLeft = WAVE_DURATION;
         waveState.spawnCooldown = 0.25;
@@ -712,6 +808,7 @@
           updateEnemies(dt);
           updateShooting(dt);
           updateBulletsAndHits(dt);
+          updateLasers(dt);
           updateHud();
         }
         render();
