@@ -88,6 +88,7 @@
       const ENEMY_CONTACT_DAMAGE = 18;
       const ENEMY_DAMAGE_COOLDOWN = 0.55;
       const HIT_FLASH_DURATION = 0.22;
+      const BULLET_BASE_DAMAGE = 1;
 
       const DIRECTIONS = {
         up: { dx: 0, dy: -1 },
@@ -118,6 +119,17 @@
         spawnCooldown: 0.4,
       };
 
+      const playerStats = {
+        bulletDamage: BULLET_BASE_DAMAGE,
+        bulletSpeedMultiplier: 1,
+        shotMode: 1, // 1=single, 2=double, 3=triple, 8=all directions
+      };
+
+      const upgradeMenu = {
+        active: false,
+        cards: [],
+      };
+
       let lastFrameTime = 0;
       let health = PLAYER_MAX_HEALTH;
       let enemyDamageCooldown = 0;
@@ -126,6 +138,12 @@
       const endScreenButton = {
         width: 190,
         height: 46,
+      };
+      const upgradeCard = {
+        width: 170,
+        height: 220,
+        gap: 22,
+        y: 200,
       };
 
       function clamp(value, min, max) {
@@ -163,7 +181,108 @@
           y = Math.random() * canvas.height;
         }
 
-        enemies.push({ x, y, size: 22, speed: ENEMY_SPEED + waveState.number * 0.07 });
+        const enemyHealth = 1 + Math.floor((waveState.number - 1) / 2);
+        enemies.push({ x, y, size: 22, speed: ENEMY_SPEED + waveState.number * 0.07, hp: enemyHealth });
+      }
+
+      function rotateVector(dx, dy, angle) {
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        return { dx: dx * cos - dy * sin, dy: dx * sin + dy * cos };
+      }
+
+      function getShotVectors() {
+        const base = { dx: player.aimDx, dy: player.aimDy };
+        if (playerStats.shotMode === 2) {
+          return [base, { dx: -base.dx, dy: -base.dy }];
+        }
+        if (playerStats.shotMode === 3) {
+          return [base, rotateVector(base.dx, base.dy, Math.PI / 7), rotateVector(base.dx, base.dy, -Math.PI / 7)];
+        }
+        if (playerStats.shotMode === 8) {
+          const vectors = [];
+          for (let i = 0; i < 8; i++) {
+            vectors.push(rotateVector(1, 0, (Math.PI * 2 * i) / 8));
+          }
+          return vectors;
+        }
+        return [base];
+      }
+
+      function getUpgradePool() {
+        return [
+          {
+            key: "damage",
+            title: "Damage +1",
+            description: "Bullets hit harder.",
+            apply: () => {
+              playerStats.bulletDamage += 1;
+            },
+          },
+          {
+            key: "bulletSpeed",
+            title: "Bullet Speed +20%",
+            description: "Shots travel faster.",
+            apply: () => {
+              playerStats.bulletSpeedMultiplier *= 1.2;
+            },
+          },
+          {
+            key: "heal",
+            title: "Heal +30",
+            description: "Restore your HP.",
+            apply: () => {
+              health = clamp(health + 30, 0, PLAYER_MAX_HEALTH);
+            },
+          },
+          {
+            key: "shot2",
+            title: "2-Way Shot",
+            description: "Fire forward + backward.",
+            apply: () => {
+              playerStats.shotMode = Math.max(playerStats.shotMode, 2);
+            },
+          },
+          {
+            key: "shot3",
+            title: "3-Way Shot",
+            description: "Spread into three shots.",
+            apply: () => {
+              playerStats.shotMode = Math.max(playerStats.shotMode, 3);
+            },
+          },
+          {
+            key: "shot8",
+            title: "All-Directions",
+            description: "Blast in all directions.",
+            apply: () => {
+              playerStats.shotMode = 8;
+            },
+          },
+        ];
+      }
+
+      function beginUpgradeSelection() {
+        const pool = [...getUpgradePool()];
+        const cards = [];
+        while (cards.length < 3 && pool.length > 0) {
+          const index = Math.floor(Math.random() * pool.length);
+          cards.push(pool.splice(index, 1)[0]);
+        }
+        upgradeMenu.cards = cards;
+        upgradeMenu.active = true;
+      }
+
+      function chooseUpgrade(index) {
+        const chosen = upgradeMenu.cards[index];
+        if (!chosen) return;
+        chosen.apply();
+        upgradeMenu.active = false;
+        upgradeMenu.cards = [];
+        waveState.number += 1;
+        waveState.timeLeft = WAVE_DURATION;
+        waveState.spawnCooldown = 0.25;
+        updateHud();
       }
 
       function drawSkyBackground() {
@@ -195,9 +314,15 @@
       }
 
       function drawEnemies() {
-        ctx.fillStyle = "#ff5a7d";
         for (const enemy of enemies) {
+          const hurtTone = clamp(enemy.hp / 5, 0.2, 1);
+          ctx.fillStyle = `rgba(255, ${Math.round(70 + 40 * hurtTone)}, ${Math.round(100 + 25 * hurtTone)}, 1)`;
           ctx.fillRect(enemy.x - enemy.size / 2, enemy.y - enemy.size / 2, enemy.size, enemy.size);
+          if (enemy.hp > 1) {
+            ctx.fillStyle = "#fff";
+            ctx.font = "11px system-ui, sans-serif";
+            ctx.fillText(`${enemy.hp}`, enemy.x - 3, enemy.y + 4);
+          }
         }
       }
 
@@ -242,6 +367,40 @@
         ctx.fillText(`HP ${Math.ceil(health)} / ${PLAYER_MAX_HEALTH}`, x + 6, y - 8);
       }
 
+      function drawUpgradeMenu() {
+        if (!upgradeMenu.active) return;
+        const totalWidth = upgradeCard.width * 3 + upgradeCard.gap * 2;
+        const startX = (canvas.width - totalWidth) / 2;
+        const y = upgradeCard.y;
+
+        ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#ffffff";
+        ctx.textAlign = "center";
+        ctx.font = "700 24px system-ui, sans-serif";
+        ctx.fillText(`Wave ${waveState.number} Clear! Pick an upgrade`, canvas.width / 2, 130);
+
+        upgradeMenu.cards.forEach((card, index) => {
+          const x = startX + index * (upgradeCard.width + upgradeCard.gap);
+          ctx.fillStyle = "rgba(20, 40, 62, 0.95)";
+          ctx.fillRect(x, y, upgradeCard.width, upgradeCard.height);
+          ctx.strokeStyle = "rgba(125, 218, 255, 0.95)";
+          ctx.lineWidth = 2;
+          ctx.strokeRect(x, y, upgradeCard.width, upgradeCard.height);
+
+          ctx.fillStyle = "#9be6ff";
+          ctx.font = "700 18px system-ui, sans-serif";
+          ctx.fillText(card.title, x + upgradeCard.width / 2, y + 42);
+          ctx.fillStyle = "#e9f6ff";
+          ctx.font = "14px system-ui, sans-serif";
+          ctx.fillText(card.description, x + upgradeCard.width / 2, y + 82);
+          ctx.fillStyle = "#8de39a";
+          ctx.font = "700 13px system-ui, sans-serif";
+          ctx.fillText("Click to choose", x + upgradeCard.width / 2, y + upgradeCard.height - 18);
+        });
+        ctx.textAlign = "left";
+      }
+
       function updateHud() {
         scoreLabel.textContent = `Enemies on screen: ${enemies.length}`;
         waveLabel.textContent = `Wave ${waveState.number} · ${Math.ceil(waveState.timeLeft)}s`;
@@ -254,6 +413,7 @@
         drawBullets();
         drawPlayer();
         drawHealthBar();
+        drawUpgradeMenu();
 
         if (health <= 0) {
           const buttonX = canvas.width / 2 - endScreenButton.width / 2;
@@ -344,13 +504,15 @@
       }
 
       function shoot() {
-        const direction = { dx: player.aimDx, dy: player.aimDy };
-        bullets.push({
-          x: player.x + direction.dx * (PLAYER_SIZE / 2 + 8),
-          y: player.y + direction.dy * (PLAYER_SIZE / 2 + 8),
-          vx: direction.dx * BULLET_SPEED,
-          vy: direction.dy * BULLET_SPEED,
-        });
+        for (const direction of getShotVectors()) {
+          bullets.push({
+            x: player.x + direction.dx * (PLAYER_SIZE / 2 + 8),
+            y: player.y + direction.dy * (PLAYER_SIZE / 2 + 8),
+            vx: direction.dx * BULLET_SPEED * playerStats.bulletSpeedMultiplier,
+            vy: direction.dy * BULLET_SPEED * playerStats.bulletSpeedMultiplier,
+            damage: playerStats.bulletDamage,
+          });
+        }
       }
 
       function updateShooting(dt) {
@@ -374,13 +536,17 @@
 
           const enemyIndex = enemies.findIndex((enemy) => Math.hypot(bullet.x - enemy.x, bullet.y - enemy.y) < enemy.size / 2 + 4);
           if (enemyIndex !== -1) {
-            enemies.splice(enemyIndex, 1);
+            enemies[enemyIndex].hp -= bullet.damage || BULLET_BASE_DAMAGE;
+            if (enemies[enemyIndex].hp <= 0) {
+              enemies.splice(enemyIndex, 1);
+            }
             bullets.splice(i, 1);
           }
         }
       }
 
       function updateWave(dt) {
+        if (upgradeMenu.active) return;
         waveState.timeLeft -= dt;
         waveState.spawnCooldown -= dt;
 
@@ -391,9 +557,7 @@
         }
 
         if (waveState.timeLeft <= 0) {
-          waveState.number += 1;
-          waveState.timeLeft = WAVE_DURATION;
-          waveState.spawnCooldown = 0.25;
+          beginUpgradeSelection();
         }
       }
 
@@ -423,6 +587,7 @@
 
         setKeyState(key, true);
         if (key === " ") {
+          if (upgradeMenu.active) return;
           input.shoot = true;
           shootCooldown = 0;
           updateShooting(0);
@@ -438,10 +603,25 @@
       });
 
       canvas.addEventListener("click", (event) => {
-        if (health > 0) return;
         const rect = canvas.getBoundingClientRect();
         const clickX = event.clientX - rect.left;
         const clickY = event.clientY - rect.top;
+
+        if (upgradeMenu.active) {
+          const totalWidth = upgradeCard.width * 3 + upgradeCard.gap * 2;
+          const startX = (canvas.width - totalWidth) / 2;
+          const y = upgradeCard.y;
+          for (let i = 0; i < upgradeMenu.cards.length; i++) {
+            const x = startX + i * (upgradeCard.width + upgradeCard.gap);
+            const inside = clickX >= x && clickX <= x + upgradeCard.width && clickY >= y && clickY <= y + upgradeCard.height;
+            if (inside) {
+              chooseUpgrade(i);
+              return;
+            }
+          }
+        }
+
+        if (health > 0) return;
         const buttonX = canvas.width / 2 - endScreenButton.width / 2;
         const buttonY = canvas.height / 2 + 44;
         const clickedRestart =
@@ -467,8 +647,14 @@
         healthFlashTimer = 0;
         enemyDamageCooldown = 0;
         shootCooldown = 0;
+        input.shoot = false;
         bullets.length = 0;
         enemies.length = 0;
+        upgradeMenu.active = false;
+        upgradeMenu.cards = [];
+        playerStats.bulletDamage = BULLET_BASE_DAMAGE;
+        playerStats.bulletSpeedMultiplier = 1;
+        playerStats.shotMode = 1;
         waveState.number = 1;
         waveState.timeLeft = WAVE_DURATION;
         waveState.spawnCooldown = 0.25;
@@ -486,7 +672,7 @@
 
         healthFlashTimer = Math.max(0, healthFlashTimer - dt);
 
-        if (health > 0) {
+        if (health > 0 && !upgradeMenu.active) {
           updateWave(dt);
           updateClouds(dt);
           updatePlayer(dt);
