@@ -211,7 +211,7 @@
         }
 
         if (playerStats.pathChoice === "laser") {
-          if (playerStats.hasLaser && !playerStats.hasLaserAllDirections && waveState.number >= 10) {
+          if (playerStats.hasLaser && !playerStats.hasLaserAllDirections && waveState.number >= 9) {
             pool.push({ key: "laser8", title: "Laser All-Way", description: "Laser fires all directions.", apply: () => { playerStats.hasLaserAllDirections = true; } });
           }
           if (playerStats.hasLaserAllDirections && !playerStats.hasAutoLaser) {
