@@ -59,7 +59,6 @@
         font-size: 0.95rem;
         color: #17365e;
       }
-
     </style>
   </head>
   <body>
@@ -67,7 +66,7 @@
 
     <main class="game-shell">
       <canvas id="game" width="640" height="640" aria-label="Shooting game"></canvas>
-      <p class="hint">Move: <strong>W A S D</strong> (hold) · Shoot: <strong>Space</strong></p>
+      <p class="hint">Move: <strong>W A S D</strong> (hold) · Shoot/Smash: <strong>Space</strong></p>
       <p class="score" id="score">Enemies on screen: 0</p>
     </main>
 
@@ -86,18 +85,17 @@
       const WAVE_DURATION = 30;
       const ENEMY_SPEED = 1.7;
       const PLAYER_MAX_HEALTH = 100;
-      const ENEMY_CONTACT_DAMAGE = 18;
+      const ENEMY_CONTACT_DAMAGE = 5;
       const ENEMY_DAMAGE_COOLDOWN = 0.55;
       const HIT_FLASH_DURATION = 0.22;
       const BULLET_BASE_DAMAGE = 1;
-      const BOSS_WAVE_INTERVAL = 10;
-      const BOSS_BASE_HEALTH = 28;
-      const BOSS_HEALTH_PER_WAVE = 6;
-      const BOSS_SPEED = 0.7;
-      const BOSS_SIZE = 42;
-      const BOSS_SHOCKWAVE_INTERVAL = 6;
-      const BOSS_SHOCKWAVE_RADIUS = 92;
-      const BOSS_SHOCKWAVE_DAMAGE = 14;
+      const SMASH_DAMAGE = 8;
+      const SMASH_RADIUS = 90;
+      const MEGA_SMASH_DAMAGE = 11;
+      const MEGA_SMASH_RADIUS = 145;
+      const EARTHQUAKE_DAMAGE = 3;
+      const EARTHQUAKE_RADIUS = Math.hypot(canvas.width, canvas.height);
+      const SMASH_INTERVAL = 0.45;
 
       const DIRECTIONS = {
         up: { dx: 0, dy: -1 },
@@ -122,7 +120,7 @@
       const lasers = [];
       const enemies = [];
       const clouds = [];
-      const shockwaves = [];
+      const attackBursts = [];
 
       const waveState = {
         number: 1,
@@ -133,10 +131,14 @@
       const playerStats = {
         bulletDamage: BULLET_BASE_DAMAGE,
         bulletSpeedMultiplier: 1,
-        shotMode: 1, // 1=single, 2=double, 3=triple, 8=all directions
+        shotMode: 1,
         hasLaser: false,
         hasLaserAllDirections: false,
         hasAutoLaser: false,
+        hasSmash: false,
+        hasMegaSmash: false,
+        hasEarthquake: false,
+        laserPathLocked: false,
       };
 
       const upgradeMenu = {
@@ -148,7 +150,10 @@
       let lastFrameTime = 0;
       let health = PLAYER_MAX_HEALTH;
       let enemyDamageCooldown = 0;
-@@ -146,71 +155,89 @@
+      let healthFlashTimer = 0;
+      let shootCooldown = 0;
+      const endScreenButton = {
+        width: 190,
         height: 46,
       };
       const upgradeCard = {
@@ -174,24 +179,6 @@
         }
       }
 
-
-      function isBossWave() {
-        return waveState.number % BOSS_WAVE_INTERVAL === 0;
-      }
-
-      function createBoss() {
-        const tier = waveState.number / BOSS_WAVE_INTERVAL;
-        return {
-          x: Math.random() * (canvas.width - 120) + 60,
-          y: -40,
-          size: BOSS_SIZE,
-          speed: BOSS_SPEED,
-          hp: BOSS_BASE_HEALTH + tier * BOSS_HEALTH_PER_WAVE,
-          isBoss: true,
-          shockwaveCooldown: BOSS_SHOCKWAVE_INTERVAL,
-        };
-      }
-
       function spawnEdgeEnemy() {
         const edge = Math.floor(Math.random() * 4);
         let x = 0;
@@ -213,7 +200,6 @@
 
         const enemyHealth = 1 + Math.floor((waveState.number - 1) / 2);
         enemies.push({ x, y, size: 22, speed: ENEMY_SPEED + waveState.number * 0.07, hp: enemyHealth });
-        enemies.push({ x, y, size: 22, speed: ENEMY_SPEED + waveState.number * 0.07, hp: enemyHealth, isBoss: false });
       }
 
       function rotateVector(dx, dy, angle) {
@@ -239,7 +225,171 @@
         const wy = py - y1;
         const lengthSquared = vx * vx + vy * vy || 1;
         const projection = clamp((wx * vx + wy * vy) / lengthSquared, 0, 1);
-@@ -352,50 +379,54 @@
+        const nearestX = x1 + projection * vx;
+        const nearestY = y1 + projection * vy;
+        return Math.hypot(px - nearestX, py - nearestY);
+      }
+
+      function getShotVectors() {
+        const base = { dx: player.aimDx, dy: player.aimDy };
+        if (playerStats.shotMode === 2) {
+          return [base, { dx: -base.dx, dy: -base.dy }];
+        }
+        if (playerStats.shotMode === 3) {
+          return [base, rotateVector(base.dx, base.dy, Math.PI / 7), rotateVector(base.dx, base.dy, -Math.PI / 7)];
+        }
+        if (playerStats.shotMode === 8) {
+          const vectors = [];
+          for (let i = 0; i < 8; i++) {
+            vectors.push(rotateVector(1, 0, (Math.PI * 2 * i) / 8));
+          }
+          return vectors;
+        }
+        return [base];
+      }
+
+      function getClosestEnemyDirection() {
+        if (enemies.length === 0) {
+          return { dx: player.aimDx || 1, dy: player.aimDy || 0 };
+        }
+        let closest = enemies[0];
+        let closestDistance = Math.hypot(closest.x - player.x, closest.y - player.y);
+        for (let i = 1; i < enemies.length; i++) {
+          const enemy = enemies[i];
+          const distance = Math.hypot(enemy.x - player.x, enemy.y - player.y);
+          if (distance < closestDistance) {
+            closest = enemy;
+            closestDistance = distance;
+          }
+        }
+        const dx = closest.x - player.x;
+        const dy = closest.y - player.y;
+        const length = Math.hypot(dx, dy) || 1;
+        return { dx: dx / length, dy: dy / length };
+      }
+
+      function getUpgradePool() {
+        const pool = [
+          {
+            key: "damage",
+            title: "Damage +1",
+            description: "Bullets hit harder.",
+            apply: () => {
+              playerStats.bulletDamage += 1;
+            },
+          },
+          {
+            key: "bulletSpeed",
+            title: "Bullet Speed +20%",
+            description: "Shots travel faster.",
+            apply: () => {
+              playerStats.bulletSpeedMultiplier *= 1.2;
+            },
+          },
+          {
+            key: "heal",
+            title: "Heal +30",
+            description: "Restore your HP.",
+            apply: () => {
+              health = clamp(health + 30, 0, PLAYER_MAX_HEALTH);
+            },
+          },
+        ];
+
+        if (playerStats.shotMode < 2) {
+          pool.push({
+            key: "shot2",
+            title: "2-Way Shot",
+            description: "Fire forward + backward.",
+            apply: () => {
+              playerStats.shotMode = 2;
+            },
+          });
+        } else if (playerStats.shotMode === 2) {
+          pool.push({
+            key: "shot3",
+            title: "3-Way Shot",
+            description: "Spread into three shots.",
+            apply: () => {
+              playerStats.shotMode = 3;
+            },
+          });
+        } else if (playerStats.shotMode >= 3 && playerStats.shotMode < 8) {
+          pool.push({
+            key: "shot8",
+            title: "All-Directions",
+            description: "Blast in all directions.",
+            apply: () => {
+              playerStats.shotMode = 8;
+            },
+          });
+        }
+
+        if (playerStats.shotMode === 8 && !playerStats.hasLaser && !playerStats.laserPathLocked) {
+          pool.push({
+            key: "laser",
+            title: "Laser Beam",
+            description: "Replace bullets with a piercing beam.",
+            apply: () => {
+              playerStats.hasLaser = true;
+            },
+          });
+        }
+
+        if (playerStats.hasLaser && !playerStats.hasLaserAllDirections && waveState.number >= 10) {
+          pool.push({
+            key: "laser8",
+            title: "Laser All-Way",
+            description: "Laser fires all directions.",
+            apply: () => {
+              playerStats.hasLaserAllDirections = true;
+            },
+          });
+        }
+
+        if (playerStats.hasLaserAllDirections && !playerStats.hasAutoLaser) {
+          pool.push({
+            key: "autolaser",
+            title: "Auto Laser",
+            description: "Laser auto-targets nearest enemy.",
+            apply: () => {
+              playerStats.hasAutoLaser = true;
+            },
+          });
+        }
+
+        if (playerStats.shotMode === 8 && !playerStats.hasLaser && !playerStats.hasSmash) {
+          pool.push({
+            key: "smash",
+            title: "Smash",
+            description: "Space damages nearby enemies in a circle.",
+            apply: () => {
+              playerStats.hasSmash = true;
+              playerStats.laserPathLocked = true;
+            },
+          });
+        } else if (playerStats.hasSmash && !playerStats.hasMegaSmash) {
+          pool.push({
+            key: "megaSmash",
+            title: "Mega Smash",
+            description: "Smash circle gets much bigger.",
+            apply: () => {
+              playerStats.hasMegaSmash = true;
+            },
+          });
+        } else if (playerStats.hasMegaSmash && !playerStats.hasEarthquake) {
+          pool.push({
+            key: "earthquake",
+            title: "Earthquake",
+            description: "Space damages all enemies (lower damage).",
+            apply: () => {
+              playerStats.hasEarthquake = true;
+            },
+          });
+        }
+
+        return pool;
+      }
 
       function beginUpgradeSelection() {
         const pool = [...getUpgradePool()];
@@ -265,14 +415,32 @@
         upgradeMenu.active = false;
         upgradeMenu.cards = [];
         upgradeMenu.hoveredIndex = -1;
-        enemies.length = 0;
-        bullets.length = 0;
-        lasers.length = 0;
-        shockwaves.length = 0;
         waveState.number += 1;
         waveState.timeLeft = WAVE_DURATION;
         waveState.spawnCooldown = 0.25;
         updateHud();
+      }
+
+      function applyAreaDamage(centerX, centerY, radius, damage) {
+        for (let i = enemies.length - 1; i >= 0; i--) {
+          const enemy = enemies[i];
+          if (Math.hypot(enemy.x - centerX, enemy.y - centerY) <= radius + enemy.size / 2) {
+            enemy.hp -= damage;
+            if (enemy.hp <= 0) {
+              enemies.splice(i, 1);
+            }
+          }
+        }
+      }
+
+      function useSmash() {
+        const isEarthquake = playerStats.hasEarthquake;
+        const radius = isEarthquake ? EARTHQUAKE_RADIUS : playerStats.hasMegaSmash ? MEGA_SMASH_RADIUS : SMASH_RADIUS;
+        const damage = isEarthquake ? EARTHQUAKE_DAMAGE : playerStats.hasMegaSmash ? MEGA_SMASH_DAMAGE : SMASH_DAMAGE;
+        const x = isEarthquake ? canvas.width / 2 : player.x;
+        const y = isEarthquake ? canvas.height / 2 : player.y;
+        attackBursts.push({ x, y, radius, life: 0.26, maxLife: 0.26 });
+        applyAreaDamage(x, y, radius, damage);
       }
 
       function getUpgradeCardIndexAt(clickX, clickY, now = performance.now()) {
@@ -294,7 +462,8 @@
         for (const cloud of clouds) {
           ctx.fillStyle = "rgba(255,255,255,0.88)";
           ctx.fillRect(cloud.x, cloud.y, cloud.size, cloud.size);
-@@ -404,88 +435,102 @@
+          ctx.fillRect(cloud.x + cloud.size * 0.8, cloud.y + 4, cloud.size * 0.9, cloud.size * 0.9);
+          ctx.fillRect(cloud.x + cloud.size * 0.35, cloud.y - cloud.size * 0.35, cloud.size, cloud.size);
         }
       }
 
@@ -321,9 +490,6 @@
         for (const enemy of enemies) {
           const hurtTone = clamp(enemy.hp / 5, 0.2, 1);
           ctx.fillStyle = `rgba(255, ${Math.round(70 + 40 * hurtTone)}, ${Math.round(100 + 25 * hurtTone)}, 1)`;
-          ctx.fillStyle = enemy.isBoss
-            ? `rgba(${Math.round(170 + 35 * hurtTone)}, ${Math.round(70 + 20 * hurtTone)}, ${Math.round(205 + 20 * hurtTone)}, 1)`
-            : `rgba(255, ${Math.round(70 + 40 * hurtTone)}, ${Math.round(100 + 25 * hurtTone)}, 1)`;
           ctx.fillRect(enemy.x - enemy.size / 2, enemy.y - enemy.size / 2, enemy.size, enemy.size);
           if (enemy.hp > 1) {
             ctx.fillStyle = "#fff";
@@ -361,14 +527,14 @@
         }
       }
 
-      function drawShockwaves() {
-        for (const wave of shockwaves) {
-          const alpha = clamp(wave.life / wave.maxLife, 0, 1);
-          const radius = wave.radius + (1 - alpha) * 26;
+      function drawAttackBursts() {
+        for (const burst of attackBursts) {
+          const alpha = clamp(burst.life / burst.maxLife, 0, 1);
+          const radius = burst.radius + (1 - alpha) * 26;
           ctx.strokeStyle = `rgba(190, 236, 255, ${0.75 * alpha})`;
           ctx.lineWidth = 3;
           ctx.beginPath();
-          ctx.arc(wave.x, wave.y, radius, 0, Math.PI * 2);
+          ctx.arc(burst.x, burst.y, radius, 0, Math.PI * 2);
           ctx.stroke();
         }
       }
@@ -398,7 +564,27 @@
         }
 
         ctx.strokeStyle = "rgba(255,255,255,0.7)";
-@@ -513,59 +558,64 @@
+        ctx.strokeRect(x, y, barWidth, barHeight);
+
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+        ctx.fillText(`HP ${Math.ceil(health)} / ${PLAYER_MAX_HEALTH}`, x + 6, y - 8);
+      }
+
+      function drawUpgradeMenu() {
+        if (!upgradeMenu.active) return;
+        const totalWidth = upgradeCard.width * 3 + upgradeCard.gap * 2;
+        const startX = (canvas.width - totalWidth) / 2;
+        const y = upgradeCard.y;
+
+        ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#ffffff";
+        ctx.textAlign = "center";
+        ctx.font = "700 24px system-ui, sans-serif";
+        ctx.fillText(`Wave ${waveState.number} Clear! Pick an upgrade`, canvas.width / 2, 130);
+
+        upgradeMenu.cards.forEach((card, index) => {
           const x = startX + index * (upgradeCard.width + upgradeCard.gap);
           const isHovered = upgradeMenu.hoveredIndex === index;
           const bobOffset = isHovered ? Math.sin(performance.now() * 0.01) * 6 - 8 : 0;
@@ -425,11 +611,6 @@
       function updateHud() {
         scoreLabel.textContent = `Enemies on screen: ${enemies.length}`;
         waveLabel.textContent = `Wave ${waveState.number} · ${Math.ceil(waveState.timeLeft)}s`;
-        if (isBossWave() && !upgradeMenu.active && health > 0) {
-          waveLabel.textContent = `Boss Wave ${waveState.number}`;
-        } else {
-          waveLabel.textContent = `Wave ${waveState.number} · ${Math.ceil(waveState.timeLeft)}s`;
-        }
       }
 
       function render() {
@@ -438,7 +619,7 @@
         drawEnemies();
         drawBullets();
         drawLasers();
-        drawShockwaves();
+        drawAttackBursts();
         drawPlayer();
         drawHealthBar();
         drawUpgradeMenu();
@@ -464,7 +645,38 @@
           ctx.fillText("Restart", canvas.width / 2, buttonY + 30);
           ctx.textAlign = "left";
         }
-@@ -604,153 +654,196 @@
+      }
+
+      function updatePlayer(dt) {
+        let inputX = 0;
+        let inputY = 0;
+
+        if (input.left) inputX -= 1;
+        if (input.right) inputX += 1;
+        if (input.up) inputY -= 1;
+        if (input.down) inputY += 1;
+
+        let targetVx = 0;
+        let targetVy = 0;
+
+        if (inputX !== 0 || inputY !== 0) {
+          const length = Math.hypot(inputX, inputY);
+          targetVx = (inputX / length) * PLAYER_MAX_SPEED;
+          targetVy = (inputY / length) * PLAYER_MAX_SPEED;
+          player.aimDx = inputX / length;
+          player.aimDy = inputY / length;
+
+          if (Math.abs(inputX) >= Math.abs(inputY)) {
+            player.facing = inputX >= 0 ? "right" : "left";
+          } else {
+            player.facing = inputY >= 0 ? "down" : "up";
+          }
+        }
+
+        const accel = (inputX !== 0 || inputY !== 0 ? PLAYER_ACCEL : PLAYER_FRICTION) * dt;
+        const deltaVx = targetVx - player.vx;
+        const deltaVy = targetVy - player.vy;
+        const deltaMagnitude = Math.hypot(deltaVx, deltaVy);
 
         if (deltaMagnitude > accel && deltaMagnitude !== 0) {
           player.vx += (deltaVx / deltaMagnitude) * accel;
@@ -490,23 +702,6 @@
           const distance = Math.hypot(dx, dy) || 1;
           enemy.x += (dx / distance) * enemy.speed * dt * 60;
           enemy.y += (dy / distance) * enemy.speed * dt * 60;
-
-          if (enemy.isBoss) {
-            enemy.shockwaveCooldown -= dt;
-            if (enemy.shockwaveCooldown <= 0) {
-              enemy.shockwaveCooldown += BOSS_SHOCKWAVE_INTERVAL;
-              shockwaves.push({
-                x: enemy.x,
-                y: enemy.y,
-                radius: BOSS_SHOCKWAVE_RADIUS,
-                life: 0.45,
-                maxLife: 0.45,
-              });
-              if (Math.hypot(player.x - enemy.x, player.y - enemy.y) <= BOSS_SHOCKWAVE_RADIUS) {
-                takeDamage(BOSS_SHOCKWAVE_DAMAGE);
-              }
-            }
-          }
         }
 
         enemyDamageCooldown = Math.max(0, enemyDamageCooldown - dt);
@@ -514,12 +709,6 @@
         if (touchingEnemy && enemyDamageCooldown <= 0) {
           takeDamage(ENEMY_CONTACT_DAMAGE);
           enemyDamageCooldown = ENEMY_DAMAGE_COOLDOWN;
-        }
-      }
-
-      function handleEnemyDefeat(enemy) {
-        if (enemy.isBoss) {
-          beginUpgradeSelection();
         }
       }
 
@@ -557,7 +746,6 @@
                 hitEnemies.add(enemy);
                 if (enemy.hp <= 0) {
                   enemies.splice(i, 1);
-                  handleEnemyDefeat(enemy);
                 }
               }
             }
@@ -585,11 +773,11 @@
         }
       }
 
-      function updateShockwaves(dt) {
-        for (let i = shockwaves.length - 1; i >= 0; i--) {
-          shockwaves[i].life -= dt;
-          if (shockwaves[i].life <= 0) {
-            shockwaves.splice(i, 1);
+      function updateAttackBursts(dt) {
+        for (let i = attackBursts.length - 1; i >= 0; i--) {
+          attackBursts[i].life -= dt;
+          if (attackBursts[i].life <= 0) {
+            attackBursts.splice(i, 1);
           }
         }
       }
@@ -618,8 +806,6 @@
             enemies[enemyIndex].hp -= bullet.damage || BULLET_BASE_DAMAGE;
             if (enemies[enemyIndex].hp <= 0) {
               enemies.splice(enemyIndex, 1);
-              const [defeatedEnemy] = enemies.splice(enemyIndex, 1);
-              handleEnemyDefeat(defeatedEnemy);
             }
             bullets.splice(i, 1);
           }
@@ -628,15 +814,6 @@
 
       function updateWave(dt) {
         if (upgradeMenu.active) return;
-
-        if (isBossWave()) {
-          if (!enemies.some((enemy) => enemy.isBoss)) {
-            enemies.push(createBoss());
-          }
-          waveState.timeLeft = WAVE_DURATION;
-          return;
-        }
-
         waveState.timeLeft -= dt;
         waveState.spawnCooldown -= dt;
 
@@ -662,7 +839,83 @@
       }
 
       function setKeyState(key, value) {
-@@ -826,73 +919,74 @@
+        if (key === "w") input.up = value;
+        if (key === "a") input.left = value;
+        if (key === "s") input.down = value;
+        if (key === "d") input.right = value;
+      }
+
+      window.addEventListener("keydown", (event) => {
+        const key = event.key.toLowerCase();
+
+        if (["w", "a", "s", "d", " ", "q", "1", "2", "3"].includes(key)) {
+          event.preventDefault();
+        }
+
+        if (key === "q") {
+          triggerDevWaveUpgrade();
+          return;
+        }
+
+        if (upgradeMenu.active && ["1", "2", "3"].includes(key)) {
+          chooseUpgrade(Number(key) - 1);
+          return;
+        }
+
+        setKeyState(key, true);
+        if (key === " ") {
+          if (upgradeMenu.active) return;
+          if (playerStats.hasSmash) {
+            if (shootCooldown <= 0) {
+              useSmash();
+              shootCooldown = SMASH_INTERVAL;
+            }
+            return;
+          }
+
+          input.shoot = true;
+          shootCooldown = 0;
+          updateShooting(0);
+        }
+      });
+
+      window.addEventListener("keyup", (event) => {
+        const key = event.key.toLowerCase();
+        setKeyState(key, false);
+        if (key === " ") {
+          input.shoot = false;
+        }
+      });
+
+      canvas.addEventListener("mousemove", (event) => {
+        if (!upgradeMenu.active) {
+          upgradeMenu.hoveredIndex = -1;
+          return;
+        }
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = event.clientX - rect.left;
+        const mouseY = event.clientY - rect.top;
+        upgradeMenu.hoveredIndex = getUpgradeCardIndexAt(mouseX, mouseY);
+      });
+
+      canvas.addEventListener("click", (event) => {
+        const rect = canvas.getBoundingClientRect();
+        const clickX = event.clientX - rect.left;
+        const clickY = event.clientY - rect.top;
+
+        if (upgradeMenu.active) {
+          const clickedIndex = getUpgradeCardIndexAt(clickX, clickY);
+          if (clickedIndex !== -1) {
+            chooseUpgrade(clickedIndex);
+            return;
+          }
+        }
+
+        if (health > 0) return;
+        const buttonX = canvas.width / 2 - endScreenButton.width / 2;
+        const buttonY = canvas.height / 2 + 44;
+        const clickedRestart =
+          clickX >= buttonX &&
           clickX <= buttonX + endScreenButton.width &&
           clickY >= buttonY &&
           clickY <= buttonY + endScreenButton.height;
@@ -688,7 +941,7 @@
         bullets.length = 0;
         lasers.length = 0;
         enemies.length = 0;
-        shockwaves.length = 0;
+        attackBursts.length = 0;
         upgradeMenu.active = false;
         upgradeMenu.cards = [];
         playerStats.bulletDamage = BULLET_BASE_DAMAGE;
@@ -697,6 +950,10 @@
         playerStats.hasLaser = false;
         playerStats.hasLaserAllDirections = false;
         playerStats.hasAutoLaser = false;
+        playerStats.hasSmash = false;
+        playerStats.hasMegaSmash = false;
+        playerStats.hasEarthquake = false;
+        playerStats.laserPathLocked = false;
         waveState.number = 1;
         waveState.timeLeft = WAVE_DURATION;
         waveState.spawnCooldown = 0.25;
@@ -713,16 +970,19 @@
         lastFrameTime = timestamp;
 
         healthFlashTimer = Math.max(0, healthFlashTimer - dt);
+        shootCooldown = Math.max(0, shootCooldown - dt);
 
         if (health > 0 && !upgradeMenu.active) {
           updateWave(dt);
           updateClouds(dt);
           updatePlayer(dt);
           updateEnemies(dt);
-          updateShooting(dt);
+          if (!playerStats.hasSmash) {
+            updateShooting(dt);
+          }
           updateBulletsAndHits(dt);
           updateLasers(dt);
-          updateShockwaves(dt);
+          updateAttackBursts(dt);
           updateHud();
         }
         render();
