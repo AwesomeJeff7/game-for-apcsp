@@ -68,7 +68,7 @@
       const PLAYER_FRICTION = 35;
       const PLAYER_SIZE = 28;
       const BULLET_SPEED = 10;
-      const SHOT_INTERVAL = 0.11;
+      const SHOT_INTERVAL = 1;
       const WAVE_DURATION = 30;
       const ENEMY_SPEED = 1.7;
       const PLAYER_MAX_HEALTH = 100;
@@ -206,7 +206,7 @@
 
         if (playerStats.shotMode === 8 && !playerStats.pathChoice) {
           pool.push({ key: "laser", title: "Laser Beam", description: "Replace bullets with a piercing beam.", apply: () => { playerStats.hasLaser = true; playerStats.pathChoice = "laser"; } });
-          pool.push({ key: "smash", title: "Smash", description: "Space damages nearby \n enemies in a circle.", apply: () => { playerStats.hasSmash = true; playerStats.pathChoice = "smash"; } });
+          pool.push({ key: "smash", title: "Smash", description: "Space damages nearby enemies in a circle.", apply: () => { playerStats.hasSmash = true; playerStats.pathChoice = "smash"; } });
           pool.push({ key: "electric", title: "Electric Spark", description: "Shot chains to 1 nearby enemy.", apply: () => { playerStats.hasElectric = true; playerStats.pathChoice = "electric"; } });
         }
 
