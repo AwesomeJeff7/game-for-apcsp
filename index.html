@@ -58,651 +58,714 @@
     </main>
 
     <script>
-      const canvas = document.getElementById("game");
-      const scoreLabel = document.getElementById("score");
-      const waveLabel = document.getElementById("wave");
-      const ctx = canvas.getContext("2d");
+  const canvas = document.getElementById("game");
+  const scoreLabel = document.getElementById("score");
+  const waveLabel = document.getElementById("wave");
+  const ctx = canvas.getContext("2d");
 
-      const PLAYER_MAX_SPEED = 8.5;
-      const PLAYER_ACCEL = 40;
-      const PLAYER_FRICTION = 35;
-      const PLAYER_SIZE = 28;
-      const BULLET_SPEED = 10;
-      const SHOT_INTERVAL = 10;
-      const WAVE_DURATION = 30;
-      const ENEMY_SPEED = 1.7;
-      const PLAYER_MAX_HEALTH = 100;
-      const ENEMY_CONTACT_DAMAGE = 5;
-      const ENEMY_DAMAGE_COOLDOWN = 0.55;
-      const HIT_FLASH_DURATION = 0.22;
-      const BULLET_BASE_DAMAGE = 1;
-      const SMASH_DAMAGE = 8;
-      const SMASH_RADIUS = 70;
-      const MEGA_SMASH_DAMAGE = 11;
-      const MEGA_SMASH_RADIUS = 110;
-      const EARTHQUAKE_DAMAGE = 3;
-      const EARTHQUAKE_RADIUS = Math.hypot(canvas.width, canvas.height) * 1.25;
-      const SMASH_INTERVAL = 0.45;
-      const ELECTRIC_CHAIN_RADIUS = 150;
+  const PLAYER_MAX_SPEED = 8.5;
+  const PLAYER_ACCEL = 40;
+  const PLAYER_FRICTION = 35;
+  const PLAYER_SIZE = 28;
+  const BULLET_SPEED = 10;
+  const SHOT_INTERVAL = 0.11;
+  const WAVE_DURATION = 30;
+  const ENEMY_SPEED = 1.7;
+  const PLAYER_MAX_HEALTH = 100;
+  const ENEMY_CONTACT_DAMAGE = 5;
+  const ENEMY_DAMAGE_COOLDOWN = 0.55;
+  const HIT_FLASH_DURATION = 0.22;
+  const BULLET_BASE_DAMAGE = 1;
+  const SMASH_DAMAGE = 8;
+  const SMASH_RADIUS = 70;
+  const MEGA_SMASH_DAMAGE = 11;
+  const MEGA_SMASH_RADIUS = 110;
+  const EARTHQUAKE_DAMAGE = 3;
+  const EARTHQUAKE_RADIUS = Math.hypot(canvas.width, canvas.height) * 1.25;
+  const SMASH_INTERVAL = 0.45;
+  const ELECTRIC_CHAIN_RADIUS = 150;
 
-      const DIRECTIONS = {
-        up: { dx: 0, dy: -1 }, left: { dx: -1, dy: 0 }, down: { dx: 0, dy: 1 }, right: { dx: 1, dy: 0 },
-      };
+  const DIRECTIONS = {
+    up: { dx: 0, dy: -1 }, left: { dx: -1, dy: 0 }, down: { dx: 0, dy: 1 }, right: { dx: 1, dy: 0 },
+  };
 
-      const player = { x: canvas.width / 2, y: canvas.height / 2, vx: 0, vy: 0, facing: "up", aimDx: 0, aimDy: -1, color: "#ffcf4a" };
-      const input = { up: false, left: false, down: false, right: false, shoot: false };
-      const bullets = [];
-      const lasers = [];
-      const enemies = [];
-      const clouds = [];
-      const attackBursts = [];
-      const electricArcs = [];
+  const player = { x: canvas.width / 2, y: canvas.height / 2, vx: 0, vy: 0, facing: "up", aimDx: 0, aimDy: -1, color: "#ffcf4a" };
+  const input = { up: false, left: false, down: false, right: false, shoot: false };
+  const bullets = [];
+  const lasers = [];
+  const enemies = [];
+  const clouds = [];
+  const attackBursts = [];
+  const electricArcs = [];
 
-      const waveState = { number: 1, timeLeft: WAVE_DURATION, spawnCooldown: 0.4 };
+  const waveState = { number: 1, timeLeft: WAVE_DURATION, spawnCooldown: 0.4 };
 
-      const playerStats = {
-        bulletDamage: BULLET_BASE_DAMAGE,
-        bulletSpeedMultiplier: 1,
-        shotMode: 1,
-        hasLaser: false,
-        hasLaserAllDirections: false,
-        hasAutoLaser: false,
-        hasSmash: false,
-        hasMegaSmash: false,
-        hasEarthquake: false,
-        hasElectric: false,
-        hasMegaShock: false,
-        hasThunderstorm: false,
-        pathChoice: null,
-      };
+  const playerStats = {
+    bulletDamage: BULLET_BASE_DAMAGE,
+    bulletSpeedMultiplier: 1,
+    shotMode: 1,
+    hasLaser: false,
+    hasLaserAllDirections: false,
+    hasAutoLaser: false,
+    hasSmash: false,
+    hasMegaSmash: false,
+    hasEarthquake: false,
+    hasElectric: false,
+    hasMegaShock: false,
+    hasThunderstorm: false,
+    pathChoice: null,
+  };
 
-      const upgradeMenu = { active: false, cards: [], hoveredIndex: -1 };
-      let lastFrameTime = 0;
-      let health = PLAYER_MAX_HEALTH;
-      let enemyDamageCooldown = 0;
-      let healthFlashTimer = 0;
-      let shootCooldown = 0;
-      const endScreenButton = { width: 190, height: 46 };
-      const upgradeCard = { width: 170, height: 220, gap: 22, y: 200 };
+  const upgradeMenu = { active: false, cards: [], hoveredIndex: -1 };
+  let lastFrameTime = 0;
+  let health = PLAYER_MAX_HEALTH;
+  let enemyDamageCooldown = 0;
+  let healthFlashTimer = 0;
+  let shootCooldown = 0;
+  const endScreenButton = { width: 190, height: 46 };
+  const upgradeCard = { width: 170, height: 220, gap: 22, y: 200 };
 
-      function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
+  function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
 
-      function createClouds(count) {
-        clouds.length = 0;
-        for (let i = 0; i < count; i++) {
-          clouds.push({ x: Math.random() * canvas.width, y: Math.random() * canvas.height, size: 14 + Math.random() * 26, drift: 5 + Math.random() * 12 });
+  function createClouds(count) {
+    clouds.length = 0;
+    for (let i = 0; i < count; i++) {
+      clouds.push({ x: Math.random() * canvas.width, y: Math.random() * canvas.height, size: 14 + Math.random() * 26, drift: 5 + Math.random() * 12 });
+    }
+  }
+
+  function spawnEdgeEnemy() {
+    const edge = Math.floor(Math.random() * 4);
+    let x = 0; let y = 0;
+    if (edge === 0) { x = Math.random() * canvas.width; y = -16; }
+    else if (edge === 1) { x = canvas.width + 16; y = Math.random() * canvas.height; }
+    else if (edge === 2) { x = Math.random() * canvas.width; y = canvas.height + 16; }
+    else { x = -16; y = Math.random() * canvas.height; }
+    const enemyHealth = 1 + Math.floor((waveState.number - 1) / 2);
+    enemies.push({ x, y, size: 22, speed: ENEMY_SPEED + waveState.number * 0.07, hp: enemyHealth });
+  }
+
+  function rotateVector(dx, dy, angle) {
+    const cos = Math.cos(angle); const sin = Math.sin(angle);
+    return { dx: dx * cos - dy * sin, dy: dx * sin + dy * cos };
+  }
+
+  function getLaserEndPoint(startX, startY, dx, dy) {
+    const tValues = [];
+    if (dx > 0) tValues.push((canvas.width - startX) / dx);
+    if (dx < 0) tValues.push((0 - startX) / dx);
+    if (dy > 0) tValues.push((canvas.height - startY) / dy);
+    if (dy < 0) tValues.push((0 - startY) / dy);
+    const t = Math.min(...tValues.filter((value) => value >= 0));
+    return { x: startX + dx * t, y: startY + dy * t };
+  }
+
+  function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
+    const vx = x2 - x1; const vy = y2 - y1; const wx = px - x1; const wy = py - y1;
+    const lengthSquared = vx * vx + vy * vy || 1;
+    const projection = clamp((wx * vx + wy * vy) / lengthSquared, 0, 1);
+    const nearestX = x1 + projection * vx; const nearestY = y1 + projection * vy;
+    return Math.hypot(px - nearestX, py - nearestY);
+  }
+
+  function getShotVectors() {
+    const base = { dx: player.aimDx, dy: player.aimDy };
+    if (playerStats.shotMode === 2) return [base, { dx: -base.dx, dy: -base.dy }];
+    if (playerStats.shotMode === 3) return [base, rotateVector(base.dx, base.dy, Math.PI / 7), rotateVector(base.dx, base.dy, -Math.PI / 7)];
+    if (playerStats.shotMode === 8) return Array.from({ length: 8 }, (_, i) => rotateVector(1, 0, (Math.PI * 2 * i) / 8));
+    return [base];
+  }
+
+  function getClosestEnemyDirection() {
+    if (enemies.length === 0) return { dx: player.aimDx || 1, dy: player.aimDy || 0 };
+    let closest = enemies[0];
+    let closestDistance = Math.hypot(closest.x - player.x, closest.y - player.y);
+    for (let i = 1; i < enemies.length; i++) {
+      const enemy = enemies[i];
+      const distance = Math.hypot(enemy.x - player.x, enemy.y - player.y);
+      if (distance < closestDistance) { closest = enemy; closestDistance = distance; }
+    }
+    const dx = closest.x - player.x; const dy = closest.y - player.y; const length = Math.hypot(dx, dy) || 1;
+    return { dx: dx / length, dy: dy / length };
+  }
+
+  function getUpgradePool() {
+    const pool = [
+      { key: "damage", title: "Damage +1", description: "Bullets hit harder.", apply: () => { playerStats.bulletDamage += 1; } },
+      { key: "bulletSpeed", title: "Bullet Speed +20%", description: "Shots travel faster.", apply: () => { playerStats.bulletSpeedMultiplier *= 1.2; } },
+      { key: "heal", title: "Heal +30", description: "Restore your HP.", apply: () => { health = clamp(health + 30, 0, PLAYER_MAX_HEALTH); } },
+    ];
+
+    if (playerStats.shotMode < 2) {
+      pool.push({ key: "shot2", title: "2-Way Shot", description: "Fire forward + backward.", apply: () => { playerStats.shotMode = 2; } });
+    } else if (playerStats.shotMode === 2) {
+      pool.push({ key: "shot3", title: "3-Way Shot", description: "Spread into three shots.", apply: () => { playerStats.shotMode = 3; } });
+    } else if (playerStats.shotMode >= 3 && playerStats.shotMode < 8) {
+      pool.push({ key: "shot8", title: "All-Directions", description: "Blast in all directions.", apply: () => { playerStats.shotMode = 8; } });
+    }
+
+    if (playerStats.shotMode === 8 && !playerStats.pathChoice) {
+      pool.push({ key: "laser", title: "Laser Beam", description: "Replace bullets with a piercing beam.", apply: () => { playerStats.hasLaser = true; playerStats.pathChoice = "laser"; } });
+      pool.push({ key: "smash", title: "Smash", description: "Space damages nearby enemies in a circle.", apply: () => { playerStats.hasSmash = true; playerStats.pathChoice = "smash"; } });
+      pool.push({ key: "electric", title: "Electric Spark", description: "Shot chains to 1 nearby enemy.", apply: () => { playerStats.hasElectric = true; playerStats.pathChoice = "electric"; } });
+    }
+
+    if (playerStats.pathChoice === "laser") {
+      if (playerStats.hasLaser && !playerStats.hasLaserAllDirections && waveState.number >= 9) {
+        pool.push({ key: "laser8", title: "Laser of doom", description: "Laser fires all directions.", apply: () => { playerStats.hasLaserAllDirections = true; } });
+      }
+      if (playerStats.hasLaserAllDirections && !playerStats.hasAutoLaser) {
+        pool.push({ key: "autolaser", title: "Auto Laser", description: "Laser auto-targets nearest enemy.", apply: () => { playerStats.hasAutoLaser = true; } });
+      }
+    }
+
+    if (playerStats.pathChoice === "smash") {
+      if (playerStats.hasSmash && !playerStats.hasMegaSmash) {
+        pool.push({ key: "megaSmash", title: "Mega Smash", description: "Smash circle gets bigger.", apply: () => { playerStats.hasMegaSmash = true; } });
+      } else if (playerStats.hasMegaSmash && !playerStats.hasEarthquake) {
+        pool.push({ key: "earthquake", title: "Earthquake", description: "Huge map-wide smash (lower damage).", apply: () => { playerStats.hasEarthquake = true; } });
+      }
+    }
+
+    if (playerStats.pathChoice === "electric") {
+      if (playerStats.hasElectric && !playerStats.hasMegaShock) {
+        pool.push({ key: "megaShock", title: "Mega Shock", description: "Chains up to 5 enemies.", apply: () => { playerStats.hasMegaShock = true; } });
+      } else if (playerStats.hasMegaShock && !playerStats.hasThunderstorm) {
+        pool.push({ key: "thunderstorm", title: "Thunderstorm", description: "Chains up to 10; less damage after #6 and #8.", apply: () => { playerStats.hasThunderstorm = true; } });
+      }
+    }
+
+    return pool;
+  }
+
+  function beginUpgradeSelection() {
+    const pool = [...getUpgradePool()];
+    const cards = [];
+    while (cards.length < 3 && pool.length > 0) {
+      const index = Math.floor(Math.random() * pool.length);
+      cards.push(pool.splice(index, 1)[0]);
+    }
+    upgradeMenu.cards = cards; upgradeMenu.active = true; upgradeMenu.hoveredIndex = -1;
+  }
+
+  function triggerDevWaveUpgrade() { if (health <= 0 || upgradeMenu.active) return; beginUpgradeSelection(); }
+
+  function chooseUpgrade(index) {
+    const chosen = upgradeMenu.cards[index];
+    if (!chosen) return;
+    chosen.apply();
+    upgradeMenu.active = false; upgradeMenu.cards = []; upgradeMenu.hoveredIndex = -1;
+    waveState.number += 1; waveState.timeLeft = WAVE_DURATION; waveState.spawnCooldown = 0.25;
+    updateHud();
+  }
+
+  function applyAreaDamage(centerX, centerY, radius, damage) {
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      const enemy = enemies[i];
+      if (Math.hypot(enemy.x - centerX, enemy.y - centerY) <= radius + enemy.size / 2) {
+        enemy.hp -= damage;
+        if (enemy.hp <= 0) enemies.splice(i, 1);
+      }
+    }
+  }
+
+  function useSmash() {
+    const isEarthquake = playerStats.hasEarthquake;
+    const radius = isEarthquake ? EARTHQUAKE_RADIUS : playerStats.hasMegaSmash ? MEGA_SMASH_RADIUS : SMASH_RADIUS;
+    const damage = isEarthquake ? EARTHQUAKE_DAMAGE : playerStats.hasMegaSmash ? MEGA_SMASH_DAMAGE : SMASH_DAMAGE;
+    const x = isEarthquake ? canvas.width / 2 : player.x;
+    const y = isEarthquake ? canvas.height / 2 : player.y;
+    attackBursts.push({ x, y, radius, life: 0.26, maxLife: 0.26 });
+    applyAreaDamage(x, y, radius, damage);
+  }
+
+  function getElectricChainLimit() {
+    if (playerStats.hasThunderstorm) return 10;
+    if (playerStats.hasMegaShock) return 5;
+    if (playerStats.hasElectric) return 1;
+    return 0;
+  }
+
+  function getElectricChainDamage(shockIndex) {
+    let damage = playerStats.bulletDamage;
+    if (playerStats.hasThunderstorm && shockIndex >= 6) damage -= 1;
+    if (playerStats.hasThunderstorm && shockIndex >= 8) damage -= 1;
+    return Math.max(1, damage);
+  }
+
+  function findNearestChainTarget(fromEnemy, hitSet) {
+    let best = null;
+    let bestDist = Infinity;
+    for (const enemy of enemies) {
+      if (hitSet.has(enemy)) continue;
+      const d = Math.hypot(enemy.x - fromEnemy.x, enemy.y - fromEnemy.y);
+      if (d <= ELECTRIC_CHAIN_RADIUS && d < bestDist) { best = enemy; bestDist = d; }
+    }
+    return best;
+  }
+
+  function triggerElectricChain(startEnemy) {
+    const limit = getElectricChainLimit();
+    if (!limit) return;
+
+    const hitSet = new Set([startEnemy]);
+    let current = startEnemy;
+
+    for (let i = 0; i < limit; i++) {
+      const next = findNearestChainTarget(current, hitSet);
+      if (!next) break;
+
+      electricArcs.push({ x1: current.x, y1: current.y, x2: next.x, y2: next.y, life: 0.16, maxLife: 0.16 });
+
+      next.hp -= getElectricChainDamage(i + 1);
+      hitSet.add(next);
+      if (next.hp <= 0) {
+        const idx = enemies.indexOf(next);
+        if (idx !== -1) enemies.splice(idx, 1);
+      }
+      current = next;
+    }
+  }
+
+  function getUpgradeCardIndexAt(clickX, clickY, now = performance.now()) {
+    const totalWidth = upgradeCard.width * 3 + upgradeCard.gap * 2;
+    const startX = (canvas.width - totalWidth) / 2;
+    const baseY = upgradeCard.y;
+    for (let i = 0; i < upgradeMenu.cards.length; i++) {
+      const x = startX + i * (upgradeCard.width + upgradeCard.gap);
+      const isHovered = upgradeMenu.hoveredIndex === i;
+      const bobOffset = isHovered ? Math.sin(now * 0.01) * 6 - 8 : 0;
+      const y = baseY + bobOffset;
+      if (clickX >= x && clickX <= x + upgradeCard.width && clickY >= y && clickY <= y + upgradeCard.height) return i;
+    }
+    return -1;
+  }
+
+  function drawSkyBackground() {
+    for (const cloud of clouds) {
+      ctx.fillStyle = "rgba(255,255,255,0.88)";
+      ctx.fillRect(cloud.x, cloud.y, cloud.size, cloud.size);
+      ctx.fillRect(cloud.x + cloud.size * 0.8, cloud.y + 4, cloud.size * 0.9, cloud.size * 0.9);
+      ctx.fillRect(cloud.x + cloud.size * 0.35, cloud.y - cloud.size * 0.35, cloud.size, cloud.size);
+    }
+  }
+
+  function drawPlayer() {
+    const px = player.x - PLAYER_SIZE / 2;
+    const py = player.y - PLAYER_SIZE / 2;
+    const flashStrength = clamp(healthFlashTimer / HIT_FLASH_DURATION, 0, 1);
+    ctx.fillStyle = player.color; ctx.fillRect(px, py, PLAYER_SIZE, PLAYER_SIZE);
+    if (flashStrength > 0) {
+      const pulse = 0.35 + Math.sin(performance.now() * 0.05) * 0.25;
+      ctx.fillStyle = `rgba(255,255,255,${clamp(pulse * flashStrength, 0, 0.8)})`;
+      ctx.fillRect(px, py, PLAYER_SIZE, PLAYER_SIZE);
+    }
+    const facing = DIRECTIONS[player.facing];
+    ctx.fillStyle = "#0b0f17";
+    ctx.fillRect(player.x + facing.dx * 11 - 3, player.y + facing.dy * 11 - 3, 6, 6);
+  }
+
+  function drawEnemies() {
+    for (const enemy of enemies) {
+      const hurtTone = clamp(enemy.hp / 5, 0.2, 1);
+      ctx.fillStyle = `rgba(255, ${Math.round(70 + 40 * hurtTone)}, ${Math.round(100 + 25 * hurtTone)}, 1)`;
+      ctx.fillRect(enemy.x - enemy.size / 2, enemy.y - enemy.size / 2, enemy.size, enemy.size);
+      if (enemy.hp > 1) {
+        ctx.fillStyle = "#fff"; ctx.font = "11px system-ui, sans-serif"; ctx.fillText(`${enemy.hp}`, enemy.x - 3, enemy.y + 4);
+      }
+    }
+  }
+
+  function drawBullets() {
+    ctx.fillStyle = "#62f4ff";
+    for (const bullet of bullets) { ctx.beginPath(); ctx.arc(bullet.x, bullet.y, 5, 0, Math.PI * 2); ctx.fill(); }
+  }
+
+  function drawLasers() {
+    for (const laser of lasers) {
+      const alpha = clamp(laser.life / laser.maxLife, 0, 1);
+      ctx.strokeStyle = `rgba(120, 255, 255, ${0.85 * alpha})`; ctx.lineWidth = 8;
+      ctx.beginPath(); ctx.moveTo(laser.startX, laser.startY); ctx.lineTo(laser.endX, laser.endY); ctx.stroke();
+      ctx.strokeStyle = `rgba(240, 255, 255, ${0.95 * alpha})`; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(laser.startX, laser.startY); ctx.lineTo(laser.endX, laser.endY); ctx.stroke();
+    }
+  }
+
+  function drawAttackBursts() {
+    for (const burst of attackBursts) {
+      const alpha = clamp(burst.life / burst.maxLife, 0, 1);
+      const radius = burst.radius + (1 - alpha) * 26;
+      ctx.strokeStyle = `rgba(190, 236, 255, ${0.75 * alpha})`; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(burst.x, burst.y, radius, 0, Math.PI * 2); ctx.stroke();
+    }
+  }
+
+  function drawElectricArcs() {
+    for (const arc of electricArcs) {
+      const alpha = clamp(arc.life / arc.maxLife, 0, 1);
+      ctx.strokeStyle = `rgba(180,230,255,${0.9 * alpha})`;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(arc.x1, arc.y1);
+      const midX = (arc.x1 + arc.x2) / 2 + (Math.random() - 0.5) * 16;
+      const midY = (arc.y1 + arc.y2) / 2 + (Math.random() - 0.5) * 16;
+      ctx.lineTo(midX, midY);
+      ctx.lineTo(arc.x2, arc.y2);
+      ctx.stroke();
+    }
+  }
+
+  function drawHealthBar() {
+    const barWidth = 190; const barHeight = 18; const x = 14; const y = canvas.height - 34;
+    const hpRatio = clamp(health / PLAYER_MAX_HEALTH, 0, 1);
+    const flashStrength = clamp(healthFlashTimer / HIT_FLASH_DURATION, 0, 1);
+    ctx.fillStyle = "rgba(12, 21, 34, 0.8)"; ctx.fillRect(x - 5, y - 5, barWidth + 10, barHeight + 10);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.18)"; ctx.fillRect(x, y, barWidth, barHeight);
+    const r = Math.round(235 - hpRatio * 130); const g = Math.round(85 + hpRatio * 135);
+    ctx.fillStyle = `rgb(${r}, ${g}, 90)`; ctx.fillRect(x, y, barWidth * hpRatio, barHeight);
+    if (flashStrength > 0) { ctx.fillStyle = `rgba(255, 255, 255, ${0.45 * flashStrength})`; ctx.fillRect(x, y, barWidth, barHeight); }
+    ctx.strokeStyle = "rgba(255,255,255,0.7)"; ctx.strokeRect(x, y, barWidth, barHeight);
+    ctx.fillStyle = "#ffffff"; ctx.font = "12px system-ui, sans-serif"; ctx.fillText(`HP ${Math.ceil(health)} / ${PLAYER_MAX_HEALTH}`, x + 6, y - 8);
+  }
+
+  function getWrappedTextLines(text, maxWidth) {
+    const lines = [];
+    const paragraphs = String(text).split("\n");
+
+    for (const paragraph of paragraphs) {
+      if (!paragraph.trim()) {
+        lines.push("");
+        continue;
+      }
+
+      const words = paragraph.split(/\s+/);
+      let currentLine = "";
+
+      for (const word of words) {
+        const testLine = currentLine ? `${currentLine} ${word}` : word;
+        if (ctx.measureText(testLine).width <= maxWidth) {
+          currentLine = testLine;
+          continue;
         }
-      }
 
-      function spawnEdgeEnemy() {
-        const edge = Math.floor(Math.random() * 4);
-        let x = 0; let y = 0;
-        if (edge === 0) { x = Math.random() * canvas.width; y = -16; }
-        else if (edge === 1) { x = canvas.width + 16; y = Math.random() * canvas.height; }
-        else if (edge === 2) { x = Math.random() * canvas.width; y = canvas.height + 16; }
-        else { x = -16; y = Math.random() * canvas.height; }
-        const enemyHealth = 1 + Math.floor((waveState.number - 1) / 2);
-        enemies.push({ x, y, size: 22, speed: ENEMY_SPEED + waveState.number * 0.07, hp: enemyHealth });
-      }
+        if (currentLine) lines.push(currentLine);
 
-      function rotateVector(dx, dy, angle) {
-        const cos = Math.cos(angle); const sin = Math.sin(angle);
-        return { dx: dx * cos - dy * sin, dy: dx * sin + dy * cos };
-      }
-
-      function getLaserEndPoint(startX, startY, dx, dy) {
-        const tValues = [];
-        if (dx > 0) tValues.push((canvas.width - startX) / dx);
-        if (dx < 0) tValues.push((0 - startX) / dx);
-        if (dy > 0) tValues.push((canvas.height - startY) / dy);
-        if (dy < 0) tValues.push((0 - startY) / dy);
-        const t = Math.min(...tValues.filter((value) => value >= 0));
-        return { x: startX + dx * t, y: startY + dy * t };
-      }
-
-      function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
-        const vx = x2 - x1; const vy = y2 - y1; const wx = px - x1; const wy = py - y1;
-        const lengthSquared = vx * vx + vy * vy || 1;
-        const projection = clamp((wx * vx + wy * vy) / lengthSquared, 0, 1);
-        const nearestX = x1 + projection * vx; const nearestY = y1 + projection * vy;
-        return Math.hypot(px - nearestX, py - nearestY);
-      }
-
-      function getShotVectors() {
-        const base = { dx: player.aimDx, dy: player.aimDy };
-        if (playerStats.shotMode === 2) return [base, { dx: -base.dx, dy: -base.dy }];
-        if (playerStats.shotMode === 3) return [base, rotateVector(base.dx, base.dy, Math.PI / 7), rotateVector(base.dx, base.dy, -Math.PI / 7)];
-        if (playerStats.shotMode === 8) return Array.from({ length: 8 }, (_, i) => rotateVector(1, 0, (Math.PI * 2 * i) / 8));
-        return [base];
-      }
-
-      function getClosestEnemyDirection() {
-        if (enemies.length === 0) return { dx: player.aimDx || 1, dy: player.aimDy || 0 };
-        let closest = enemies[0];
-        let closestDistance = Math.hypot(closest.x - player.x, closest.y - player.y);
-        for (let i = 1; i < enemies.length; i++) {
-          const enemy = enemies[i];
-          const distance = Math.hypot(enemy.x - player.x, enemy.y - player.y);
-          if (distance < closestDistance) { closest = enemy; closestDistance = distance; }
-        }
-        const dx = closest.x - player.x; const dy = closest.y - player.y; const length = Math.hypot(dx, dy) || 1;
-        return { dx: dx / length, dy: dy / length };
-      }
-
-      function getUpgradePool() {
-        const pool = [
-          { key: "damage", title: "Damage +1", description: "Bullets hit harder.", apply: () => { playerStats.bulletDamage += 1; } },
-          { key: "bulletSpeed", title: "Bullet Speed +20%", description: "Shots travel faster.", apply: () => { playerStats.bulletSpeedMultiplier *= 1.2; } },
-          { key: "heal", title: "Heal +30", description: "Restore your HP.", apply: () => { health = clamp(health + 30, 0, PLAYER_MAX_HEALTH); } },
-        ];
-
-        if (playerStats.shotMode < 2) {
-          pool.push({ key: "shot2", title: "2-Way Shot", description: "Fire forward + backward.", apply: () => { playerStats.shotMode = 2; } });
-        } else if (playerStats.shotMode === 2) {
-          pool.push({ key: "shot3", title: "3-Way Shot", description: "Spread into three shots.", apply: () => { playerStats.shotMode = 3; } });
-        } else if (playerStats.shotMode >= 3 && playerStats.shotMode < 8) {
-          pool.push({ key: "shot8", title: "All-Directions", description: "Blast in all directions.", apply: () => { playerStats.shotMode = 8; } });
+        if (ctx.measureText(word).width <= maxWidth) {
+          currentLine = word;
+          continue;
         }
 
-        if (playerStats.shotMode === 8 && !playerStats.pathChoice) {
-          pool.push({ key: "laser", title: "Laser Beam", description: "Replace bullets with a piercing beam.", apply: () => { playerStats.hasLaser = true; playerStats.pathChoice = "laser"; } });
-          pool.push({ key: "smash", title: "Smash", description: "Space damages nearby enemies in a circle.", apply: () => { playerStats.hasSmash = true; playerStats.pathChoice = "smash"; } });
-          pool.push({ key: "electric", title: "Electric Spark", description: "Shot chains to 1 nearby enemy.", apply: () => { playerStats.hasElectric = true; playerStats.pathChoice = "electric"; } });
-        }
-
-        if (playerStats.pathChoice === "laser") {
-          if (playerStats.hasLaser && !playerStats.hasLaserAllDirections && waveState.number >= 9) {
-            pool.push({ key: "laser8", title: "Laser of doom", description: "Laser fires all directions.", apply: () => { playerStats.hasLaserAllDirections = true; } });
+        let chunk = "";
+        for (const char of word) {
+          const testChunk = chunk + char;
+          if (ctx.measureText(testChunk).width > maxWidth && chunk) {
+            lines.push(chunk);
+            chunk = char;
+          } else {
+            chunk = testChunk;
           }
-          if (playerStats.hasLaserAllDirections && !playerStats.hasAutoLaser) {
-            pool.push({ key: "autolaser", title: "Auto Laser", description: "Laser auto-targets nearest enemy.", apply: () => { playerStats.hasAutoLaser = true; } });
-          }
         }
-
-        if (playerStats.pathChoice === "smash") {
-          if (playerStats.hasSmash && !playerStats.hasMegaSmash) {
-            pool.push({ key: "megaSmash", title: "Mega Smash", description: "Smash circle gets bigger.", apply: () => { playerStats.hasMegaSmash = true; } });
-          } else if (playerStats.hasMegaSmash && !playerStats.hasEarthquake) {
-            pool.push({ key: "earthquake", title: "Earthquake", description: "Huge map-wide smash (lower damage).", apply: () => { playerStats.hasEarthquake = true; } });
-          }
-        }
-
-        if (playerStats.pathChoice === "electric") {
-          if (playerStats.hasElectric && !playerStats.hasMegaShock) {
-            pool.push({ key: "megaShock", title: "Mega Shock", description: "Chains up to 5 enemies.", apply: () => { playerStats.hasMegaShock = true; } });
-          } else if (playerStats.hasMegaShock && !playerStats.hasThunderstorm) {
-            pool.push({ key: "thunderstorm", title: "Thunderstorm", description: "Chains up to 10; less damage after #6 and #8.", apply: () => { playerStats.hasThunderstorm = true; } });
-          }
-        }
-
-        return pool;
+        currentLine = chunk;
       }
 
-      function beginUpgradeSelection() {
-        const pool = [...getUpgradePool()];
-        const cards = [];
-        while (cards.length < 3 && pool.length > 0) {
-          const index = Math.floor(Math.random() * pool.length);
-          cards.push(pool.splice(index, 1)[0]);
-        }
-        upgradeMenu.cards = cards; upgradeMenu.active = true; upgradeMenu.hoveredIndex = -1;
-      }
+      if (currentLine) lines.push(currentLine);
+    }
 
-      function triggerDevWaveUpgrade() { if (health <= 0 || upgradeMenu.active) return; beginUpgradeSelection(); }
+    return lines;
+  }
 
-      function chooseUpgrade(index) {
-        const chosen = upgradeMenu.cards[index];
-        if (!chosen) return;
-        chosen.apply();
-        upgradeMenu.active = false; upgradeMenu.cards = []; upgradeMenu.hoveredIndex = -1;
-        waveState.number += 1; waveState.timeLeft = WAVE_DURATION; waveState.spawnCooldown = 0.25;
-        updateHud();
-      }
+  function drawWrappedCenteredText(text, centerX, startY, maxWidth, lineHeight, maxLines = Infinity) {
+    const lines = getWrappedTextLines(text, maxWidth).slice(0, maxLines);
+    lines.forEach((line, index) => ctx.fillText(line, centerX, startY + index * lineHeight));
+    return lines.length;
+  }
 
-      function applyAreaDamage(centerX, centerY, radius, damage) {
+  function drawUpgradeMenu() {
+    if (!upgradeMenu.active) return;
+    const totalWidth = upgradeCard.width * 3 + upgradeCard.gap * 2;
+    const startX = (canvas.width - totalWidth) / 2;
+    const y = upgradeCard.y;
+
+    ctx.fillStyle = "rgba(0, 0, 0, 0.5)"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#ffffff"; ctx.textAlign = "center"; ctx.font = "700 24px system-ui, sans-serif";
+    ctx.fillText(`Wave ${waveState.number} Clear! Pick an upgrade`, canvas.width / 2, 130);
+
+    upgradeMenu.cards.forEach((card, index) => {
+      const x = startX + index * (upgradeCard.width + upgradeCard.gap);
+      const isHovered = upgradeMenu.hoveredIndex === index;
+      const bobOffset = isHovered ? Math.sin(performance.now() * 0.01) * 6 - 8 : 0;
+      const cardY = y + bobOffset;
+      ctx.fillStyle = "rgba(20, 40, 62, 0.95)"; ctx.fillRect(x, cardY, upgradeCard.width, upgradeCard.height);
+      ctx.strokeStyle = isHovered ? "rgba(175, 245, 255, 1)" : "rgba(125, 218, 255, 0.95)";
+      ctx.lineWidth = isHovered ? 3 : 2; ctx.strokeRect(x, cardY, upgradeCard.width, upgradeCard.height);
+
+      const textX = x + upgradeCard.width / 2;
+      const textWidth = upgradeCard.width - 20;
+      const textTopPadding = 26;
+      const buttonTextY = cardY + upgradeCard.height - 18;
+      ctx.fillStyle = "#9be6ff"; ctx.font = "700 18px system-ui, sans-serif";
+      const titleLineCount = drawWrappedCenteredText(card.title, textX, cardY + textTopPadding, textWidth, 22, 3);
+
+      const descriptionStartY = cardY + textTopPadding + titleLineCount * 22 + 14;
+      const descriptionLineHeight = 18;
+      const descriptionMaxLines = Math.max(1, Math.floor((buttonTextY - 12 - descriptionStartY) / descriptionLineHeight));
+      ctx.fillStyle = "#e9f6ff"; ctx.font = "14px system-ui, sans-serif";
+      drawWrappedCenteredText(card.description, textX, descriptionStartY, textWidth, descriptionLineHeight, descriptionMaxLines);
+
+      ctx.fillStyle = "#8de39a"; ctx.font = "700 13px system-ui, sans-serif"; ctx.fillText(`Click or press ${index + 1}`, x + upgradeCard.width / 2, buttonTextY);
+    });
+    ctx.textAlign = "left";
+  }
+
+  function updateHud() {
+    scoreLabel.textContent = `Enemies on screen: ${enemies.length}`;
+    waveLabel.textContent = `Wave ${waveState.number} · ${Math.ceil(waveState.timeLeft)}s`;
+  }
+
+  function render() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawSkyBackground(); drawEnemies(); drawBullets(); drawLasers(); drawElectricArcs(); drawAttackBursts(); drawPlayer(); drawHealthBar(); drawUpgradeMenu();
+
+    if (health <= 0) {
+      const buttonX = canvas.width / 2 - endScreenButton.width / 2;
+      const buttonY = canvas.height / 2 + 44;
+      ctx.fillStyle = "rgba(0,0,0,0.45)"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.font = "700 38px system-ui, sans-serif"; ctx.fillText("You got zapped", canvas.width / 2, canvas.height / 2 - 10);
+      ctx.font = "500 18px system-ui, sans-serif"; ctx.fillText("Try again?", canvas.width / 2, canvas.height / 2 + 24);
+      ctx.fillStyle = "#47d27a"; ctx.fillRect(buttonX, buttonY, endScreenButton.width, endScreenButton.height);
+      ctx.strokeStyle = "rgba(255,255,255,0.85)"; ctx.strokeRect(buttonX, buttonY, endScreenButton.width, endScreenButton.height);
+      ctx.fillStyle = "#10361e"; ctx.font = "700 20px system-ui, sans-serif"; ctx.fillText("Restart", canvas.width / 2, buttonY + 30);
+      ctx.textAlign = "left";
+    }
+  }
+
+  function updatePlayer(dt) {
+    let inputX = 0; let inputY = 0;
+    if (input.left) inputX -= 1; if (input.right) inputX += 1; if (input.up) inputY -= 1; if (input.down) inputY += 1;
+
+    let targetVx = 0; let targetVy = 0;
+    if (inputX !== 0 || inputY !== 0) {
+      const length = Math.hypot(inputX, inputY);
+      targetVx = (inputX / length) * PLAYER_MAX_SPEED; targetVy = (inputY / length) * PLAYER_MAX_SPEED;
+      player.aimDx = inputX / length; player.aimDy = inputY / length;
+      if (Math.abs(inputX) >= Math.abs(inputY)) player.facing = inputX >= 0 ? "right" : "left";
+      else player.facing = inputY >= 0 ? "down" : "up";
+    }
+
+    const accel = (inputX !== 0 || inputY !== 0 ? PLAYER_ACCEL : PLAYER_FRICTION) * dt;
+    const deltaVx = targetVx - player.vx; const deltaVy = targetVy - player.vy;
+    const deltaMagnitude = Math.hypot(deltaVx, deltaVy);
+
+    if (deltaMagnitude > accel && deltaMagnitude !== 0) {
+      player.vx += (deltaVx / deltaMagnitude) * accel;
+      player.vy += (deltaVy / deltaMagnitude) * accel;
+    } else { player.vx = targetVx; player.vy = targetVy; }
+
+    player.x = clamp(player.x + player.vx * dt * 60, PLAYER_SIZE / 2, canvas.width - PLAYER_SIZE / 2);
+    player.y = clamp(player.y + player.vy * dt * 60, PLAYER_SIZE / 2, canvas.height - PLAYER_SIZE / 2);
+  }
+
+  function takeDamage(amount) { health = clamp(health - amount, 0, PLAYER_MAX_HEALTH); healthFlashTimer = HIT_FLASH_DURATION; }
+
+  function updateEnemies(dt) {
+    for (const enemy of enemies) {
+      const dx = player.x - enemy.x; const dy = player.y - enemy.y; const distance = Math.hypot(dx, dy) || 1;
+      enemy.x += (dx / distance) * enemy.speed * dt * 60; enemy.y += (dy / distance) * enemy.speed * dt * 60;
+    }
+
+    enemyDamageCooldown = Math.max(0, enemyDamageCooldown - dt);
+    const touchingEnemy = enemies.some((enemy) => Math.hypot(player.x - enemy.x, player.y - enemy.y) < enemy.size / 2 + PLAYER_SIZE / 2 - 2);
+    if (touchingEnemy && enemyDamageCooldown <= 0) { takeDamage(ENEMY_CONTACT_DAMAGE); enemyDamageCooldown = ENEMY_DAMAGE_COOLDOWN; }
+  }
+
+  function shoot() {
+    if (playerStats.hasLaser) {
+      let laserDirections = [{ dx: player.aimDx || 1, dy: player.aimDy || 0 }];
+      if (playerStats.hasAutoLaser) laserDirections = [getClosestEnemyDirection()];
+      else if (playerStats.hasLaserAllDirections) laserDirections = Array.from({ length: 8 }, (_, i) => rotateVector(1, 0, (Math.PI * 2 * i) / 8));
+      const hitEnemies = new Set();
+
+      for (const direction of laserDirections) {
+        const startX = player.x; const startY = player.y;
+        const end = getLaserEndPoint(startX, startY, direction.dx, direction.dy);
+        lasers.push({ startX, startY, endX: end.x, endY: end.y, width: 16, life: 0.35, maxLife: 0.35 });
+
         for (let i = enemies.length - 1; i >= 0; i--) {
           const enemy = enemies[i];
-          if (Math.hypot(enemy.x - centerX, enemy.y - centerY) <= radius + enemy.size / 2) {
-            enemy.hp -= damage;
+          if (hitEnemies.has(enemy)) continue;
+          const distance = pointToSegmentDistance(enemy.x, enemy.y, startX, startY, end.x, end.y);
+          if (distance <= enemy.size / 2 + 8) {
+            enemy.hp -= playerStats.bulletDamage;
+            if (playerStats.pathChoice === "electric") triggerElectricChain(enemy);
+            hitEnemies.add(enemy);
             if (enemy.hp <= 0) enemies.splice(i, 1);
           }
         }
       }
+      return;
+    }
 
-      function useSmash() {
-        const isEarthquake = playerStats.hasEarthquake;
-        const radius = isEarthquake ? EARTHQUAKE_RADIUS : playerStats.hasMegaSmash ? MEGA_SMASH_RADIUS : SMASH_RADIUS;
-        const damage = isEarthquake ? EARTHQUAKE_DAMAGE : playerStats.hasMegaSmash ? MEGA_SMASH_DAMAGE : SMASH_DAMAGE;
-        const x = isEarthquake ? canvas.width / 2 : player.x;
-        const y = isEarthquake ? canvas.height / 2 : player.y;
-        attackBursts.push({ x, y, radius, life: 0.26, maxLife: 0.26 });
-        applyAreaDamage(x, y, radius, damage);
-      }
-
-      function getElectricChainLimit() {
-        if (playerStats.hasThunderstorm) return 10;
-        if (playerStats.hasMegaShock) return 5;
-        if (playerStats.hasElectric) return 1;
-        return 0;
-      }
-
-      function getElectricChainDamage(shockIndex) {
-        let damage = playerStats.bulletDamage;
-        if (playerStats.hasThunderstorm && shockIndex >= 6) damage -= 1;
-        if (playerStats.hasThunderstorm && shockIndex >= 8) damage -= 1;
-        return Math.max(1, damage);
-      }
-
-      function findNearestChainTarget(fromEnemy, hitSet) {
-        let best = null;
-        let bestDist = Infinity;
-        for (const enemy of enemies) {
-          if (hitSet.has(enemy)) continue;
-          const d = Math.hypot(enemy.x - fromEnemy.x, enemy.y - fromEnemy.y);
-          if (d <= ELECTRIC_CHAIN_RADIUS && d < bestDist) { best = enemy; bestDist = d; }
-        }
-        return best;
-      }
-
-      function triggerElectricChain(startEnemy) {
-        const limit = getElectricChainLimit();
-        if (!limit) return;
-
-        const hitSet = new Set([startEnemy]);
-        let current = startEnemy;
-
-        for (let i = 0; i < limit; i++) {
-          const next = findNearestChainTarget(current, hitSet);
-          if (!next) break;
-
-          electricArcs.push({ x1: current.x, y1: current.y, x2: next.x, y2: next.y, life: 0.16, maxLife: 0.16 });
-
-          next.hp -= getElectricChainDamage(i + 1);
-          hitSet.add(next);
-          if (next.hp <= 0) {
-            const idx = enemies.indexOf(next);
-            if (idx !== -1) enemies.splice(idx, 1);
-          }
-          current = next;
-        }
-      }
-
-      function getUpgradeCardIndexAt(clickX, clickY, now = performance.now()) {
-        const totalWidth = upgradeCard.width * 3 + upgradeCard.gap * 2;
-        const startX = (canvas.width - totalWidth) / 2;
-        const baseY = upgradeCard.y;
-        for (let i = 0; i < upgradeMenu.cards.length; i++) {
-          const x = startX + i * (upgradeCard.width + upgradeCard.gap);
-          const isHovered = upgradeMenu.hoveredIndex === i;
-          const bobOffset = isHovered ? Math.sin(now * 0.01) * 6 - 8 : 0;
-          const y = baseY + bobOffset;
-          if (clickX >= x && clickX <= x + upgradeCard.width && clickY >= y && clickY <= y + upgradeCard.height) return i;
-        }
-        return -1;
-      }
-
-      function drawSkyBackground() {
-        for (const cloud of clouds) {
-          ctx.fillStyle = "rgba(255,255,255,0.88)";
-          ctx.fillRect(cloud.x, cloud.y, cloud.size, cloud.size);
-          ctx.fillRect(cloud.x + cloud.size * 0.8, cloud.y + 4, cloud.size * 0.9, cloud.size * 0.9);
-          ctx.fillRect(cloud.x + cloud.size * 0.35, cloud.y - cloud.size * 0.35, cloud.size, cloud.size);
-        }
-      }
-
-      function drawPlayer() {
-        const px = player.x - PLAYER_SIZE / 2;
-        const py = player.y - PLAYER_SIZE / 2;
-        const flashStrength = clamp(healthFlashTimer / HIT_FLASH_DURATION, 0, 1);
-        ctx.fillStyle = player.color; ctx.fillRect(px, py, PLAYER_SIZE, PLAYER_SIZE);
-        if (flashStrength > 0) {
-          const pulse = 0.35 + Math.sin(performance.now() * 0.05) * 0.25;
-          ctx.fillStyle = `rgba(255,255,255,${clamp(pulse * flashStrength, 0, 0.8)})`;
-          ctx.fillRect(px, py, PLAYER_SIZE, PLAYER_SIZE);
-        }
-        const facing = DIRECTIONS[player.facing];
-        ctx.fillStyle = "#0b0f17";
-        ctx.fillRect(player.x + facing.dx * 11 - 3, player.y + facing.dy * 11 - 3, 6, 6);
-      }
-
-      function drawEnemies() {
-        for (const enemy of enemies) {
-          const hurtTone = clamp(enemy.hp / 5, 0.2, 1);
-          ctx.fillStyle = `rgba(255, ${Math.round(70 + 40 * hurtTone)}, ${Math.round(100 + 25 * hurtTone)}, 1)`;
-          ctx.fillRect(enemy.x - enemy.size / 2, enemy.y - enemy.size / 2, enemy.size, enemy.size);
-          if (enemy.hp > 1) {
-            ctx.fillStyle = "#fff"; ctx.font = "11px system-ui, sans-serif"; ctx.fillText(`${enemy.hp}`, enemy.x - 3, enemy.y + 4);
-          }
-        }
-      }
-
-      function drawBullets() {
-        ctx.fillStyle = "#62f4ff";
-        for (const bullet of bullets) { ctx.beginPath(); ctx.arc(bullet.x, bullet.y, 5, 0, Math.PI * 2); ctx.fill(); }
-      }
-
-      function drawLasers() {
-        for (const laser of lasers) {
-          const alpha = clamp(laser.life / laser.maxLife, 0, 1);
-          ctx.strokeStyle = `rgba(120, 255, 255, ${0.85 * alpha})`; ctx.lineWidth = 8;
-          ctx.beginPath(); ctx.moveTo(laser.startX, laser.startY); ctx.lineTo(laser.endX, laser.endY); ctx.stroke();
-          ctx.strokeStyle = `rgba(240, 255, 255, ${0.95 * alpha})`; ctx.lineWidth = 3;
-          ctx.beginPath(); ctx.moveTo(laser.startX, laser.startY); ctx.lineTo(laser.endX, laser.endY); ctx.stroke();
-        }
-      }
-
-      function drawAttackBursts() {
-        for (const burst of attackBursts) {
-          const alpha = clamp(burst.life / burst.maxLife, 0, 1);
-          const radius = burst.radius + (1 - alpha) * 26;
-          ctx.strokeStyle = `rgba(190, 236, 255, ${0.75 * alpha})`; ctx.lineWidth = 3;
-          ctx.beginPath(); ctx.arc(burst.x, burst.y, radius, 0, Math.PI * 2); ctx.stroke();
-        }
-      }
-
-      function drawElectricArcs() {
-        for (const arc of electricArcs) {
-          const alpha = clamp(arc.life / arc.maxLife, 0, 1);
-          ctx.strokeStyle = `rgba(180,230,255,${0.9 * alpha})`;
-          ctx.lineWidth = 2.5;
-          ctx.beginPath();
-          ctx.moveTo(arc.x1, arc.y1);
-          const midX = (arc.x1 + arc.x2) / 2 + (Math.random() - 0.5) * 16;
-          const midY = (arc.y1 + arc.y2) / 2 + (Math.random() - 0.5) * 16;
-          ctx.lineTo(midX, midY);
-          ctx.lineTo(arc.x2, arc.y2);
-          ctx.stroke();
-        }
-      }
-
-      function drawHealthBar() {
-        const barWidth = 190; const barHeight = 18; const x = 14; const y = canvas.height - 34;
-        const hpRatio = clamp(health / PLAYER_MAX_HEALTH, 0, 1);
-        const flashStrength = clamp(healthFlashTimer / HIT_FLASH_DURATION, 0, 1);
-        ctx.fillStyle = "rgba(12, 21, 34, 0.8)"; ctx.fillRect(x - 5, y - 5, barWidth + 10, barHeight + 10);
-        ctx.fillStyle = "rgba(255, 255, 255, 0.18)"; ctx.fillRect(x, y, barWidth, barHeight);
-        const r = Math.round(235 - hpRatio * 130); const g = Math.round(85 + hpRatio * 135);
-        ctx.fillStyle = `rgb(${r}, ${g}, 90)`; ctx.fillRect(x, y, barWidth * hpRatio, barHeight);
-        if (flashStrength > 0) { ctx.fillStyle = `rgba(255, 255, 255, ${0.45 * flashStrength})`; ctx.fillRect(x, y, barWidth, barHeight); }
-        ctx.strokeStyle = "rgba(255,255,255,0.7)"; ctx.strokeRect(x, y, barWidth, barHeight);
-        ctx.fillStyle = "#ffffff"; ctx.font = "12px system-ui, sans-serif"; ctx.fillText(`HP ${Math.ceil(health)} / ${PLAYER_MAX_HEALTH}`, x + 6, y - 8);
-      }
-
-      function drawUpgradeMenu() {
-        if (!upgradeMenu.active) return;
-        const totalWidth = upgradeCard.width * 3 + upgradeCard.gap * 2;
-        const startX = (canvas.width - totalWidth) / 2;
-        const y = upgradeCard.y;
-
-        ctx.fillStyle = "rgba(0, 0, 0, 0.5)"; ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = "#ffffff"; ctx.textAlign = "center"; ctx.font = "700 24px system-ui, sans-serif";
-        ctx.fillText(`Wave ${waveState.number} Clear! Pick an upgrade`, canvas.width / 2, 130);
-
-        upgradeMenu.cards.forEach((card, index) => {
-          const x = startX + index * (upgradeCard.width + upgradeCard.gap);
-          const isHovered = upgradeMenu.hoveredIndex === index;
-          const bobOffset = isHovered ? Math.sin(performance.now() * 0.01) * 6 - 8 : 0;
-          const cardY = y + bobOffset;
-          ctx.fillStyle = "rgba(20, 40, 62, 0.95)"; ctx.fillRect(x, cardY, upgradeCard.width, upgradeCard.height);
-          ctx.strokeStyle = isHovered ? "rgba(175, 245, 255, 1)" : "rgba(125, 218, 255, 0.95)";
-          ctx.lineWidth = isHovered ? 3 : 2; ctx.strokeRect(x, cardY, upgradeCard.width, upgradeCard.height);
-
-          ctx.fillStyle = "#9be6ff"; ctx.font = "700 18px system-ui, sans-serif"; ctx.fillText(card.title, x + upgradeCard.width / 2, cardY + 42);
-          ctx.fillStyle = "#e9f6ff"; ctx.font = "14px system-ui, sans-serif"; ctx.fillText(card.description, x + upgradeCard.width / 2, cardY + 82);
-          ctx.fillStyle = "#8de39a"; ctx.font = "700 13px system-ui, sans-serif"; ctx.fillText(`Click or press ${index + 1}`, x + upgradeCard.width / 2, cardY + upgradeCard.height - 18);
-        });
-        ctx.textAlign = "left";
-      }
-
-      function updateHud() {
-        scoreLabel.textContent = `Enemies on screen: ${enemies.length}`;
-        waveLabel.textContent = `Wave ${waveState.number} · ${Math.ceil(waveState.timeLeft)}s`;
-      }
-
-      function render() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        drawSkyBackground(); drawEnemies(); drawBullets(); drawLasers(); drawElectricArcs(); drawAttackBursts(); drawPlayer(); drawHealthBar(); drawUpgradeMenu();
-
-        if (health <= 0) {
-          const buttonX = canvas.width / 2 - endScreenButton.width / 2;
-          const buttonY = canvas.height / 2 + 44;
-          ctx.fillStyle = "rgba(0,0,0,0.45)"; ctx.fillRect(0, 0, canvas.width, canvas.height);
-          ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.font = "700 38px system-ui, sans-serif"; ctx.fillText("You got zapped", canvas.width / 2, canvas.height / 2 - 10);
-          ctx.font = "500 18px system-ui, sans-serif"; ctx.fillText("Try again?", canvas.width / 2, canvas.height / 2 + 24);
-          ctx.fillStyle = "#47d27a"; ctx.fillRect(buttonX, buttonY, endScreenButton.width, endScreenButton.height);
-          ctx.strokeStyle = "rgba(255,255,255,0.85)"; ctx.strokeRect(buttonX, buttonY, endScreenButton.width, endScreenButton.height);
-          ctx.fillStyle = "#10361e"; ctx.font = "700 20px system-ui, sans-serif"; ctx.fillText("Restart", canvas.width / 2, buttonY + 30);
-          ctx.textAlign = "left";
-        }
-      }
-
-      function updatePlayer(dt) {
-        let inputX = 0; let inputY = 0;
-        if (input.left) inputX -= 1; if (input.right) inputX += 1; if (input.up) inputY -= 1; if (input.down) inputY += 1;
-
-        let targetVx = 0; let targetVy = 0;
-        if (inputX !== 0 || inputY !== 0) {
-          const length = Math.hypot(inputX, inputY);
-          targetVx = (inputX / length) * PLAYER_MAX_SPEED; targetVy = (inputY / length) * PLAYER_MAX_SPEED;
-          player.aimDx = inputX / length; player.aimDy = inputY / length;
-          if (Math.abs(inputX) >= Math.abs(inputY)) player.facing = inputX >= 0 ? "right" : "left";
-          else player.facing = inputY >= 0 ? "down" : "up";
-        }
-
-        const accel = (inputX !== 0 || inputY !== 0 ? PLAYER_ACCEL : PLAYER_FRICTION) * dt;
-        const deltaVx = targetVx - player.vx; const deltaVy = targetVy - player.vy;
-        const deltaMagnitude = Math.hypot(deltaVx, deltaVy);
-
-        if (deltaMagnitude > accel && deltaMagnitude !== 0) {
-          player.vx += (deltaVx / deltaMagnitude) * accel;
-          player.vy += (deltaVy / deltaMagnitude) * accel;
-        } else { player.vx = targetVx; player.vy = targetVy; }
-
-        player.x = clamp(player.x + player.vx * dt * 60, PLAYER_SIZE / 2, canvas.width - PLAYER_SIZE / 2);
-        player.y = clamp(player.y + player.vy * dt * 60, PLAYER_SIZE / 2, canvas.height - PLAYER_SIZE / 2);
-      }
-
-      function takeDamage(amount) { health = clamp(health - amount, 0, PLAYER_MAX_HEALTH); healthFlashTimer = HIT_FLASH_DURATION; }
-
-      function updateEnemies(dt) {
-        for (const enemy of enemies) {
-          const dx = player.x - enemy.x; const dy = player.y - enemy.y; const distance = Math.hypot(dx, dy) || 1;
-          enemy.x += (dx / distance) * enemy.speed * dt * 60; enemy.y += (dy / distance) * enemy.speed * dt * 60;
-        }
-
-        enemyDamageCooldown = Math.max(0, enemyDamageCooldown - dt);
-        const touchingEnemy = enemies.some((enemy) => Math.hypot(player.x - enemy.x, player.y - enemy.y) < enemy.size / 2 + PLAYER_SIZE / 2 - 2);
-        if (touchingEnemy && enemyDamageCooldown <= 0) { takeDamage(ENEMY_CONTACT_DAMAGE); enemyDamageCooldown = ENEMY_DAMAGE_COOLDOWN; }
-      }
-
-      function shoot() {
-        if (playerStats.hasLaser) {
-          let laserDirections = [{ dx: player.aimDx || 1, dy: player.aimDy || 0 }];
-          if (playerStats.hasAutoLaser) laserDirections = [getClosestEnemyDirection()];
-          else if (playerStats.hasLaserAllDirections) laserDirections = Array.from({ length: 8 }, (_, i) => rotateVector(1, 0, (Math.PI * 2 * i) / 8));
-          const hitEnemies = new Set();
-
-          for (const direction of laserDirections) {
-            const startX = player.x; const startY = player.y;
-            const end = getLaserEndPoint(startX, startY, direction.dx, direction.dy);
-            lasers.push({ startX, startY, endX: end.x, endY: end.y, width: 16, life: 0.35, maxLife: 0.35 });
-
-            for (let i = enemies.length - 1; i >= 0; i--) {
-              const enemy = enemies[i];
-              if (hitEnemies.has(enemy)) continue;
-              const distance = pointToSegmentDistance(enemy.x, enemy.y, startX, startY, end.x, end.y);
-              if (distance <= enemy.size / 2 + 8) {
-                enemy.hp -= playerStats.bulletDamage;
-                if (playerStats.pathChoice === "electric") triggerElectricChain(enemy);
-                hitEnemies.add(enemy);
-                if (enemy.hp <= 0) enemies.splice(i, 1);
-              }
-            }
-          }
-          return;
-        }
-
-        for (const direction of getShotVectors()) {
-          bullets.push({
-            x: player.x + direction.dx * (PLAYER_SIZE / 2 + 8),
-            y: player.y + direction.dy * (PLAYER_SIZE / 2 + 8),
-            vx: direction.dx * BULLET_SPEED * playerStats.bulletSpeedMultiplier,
-            vy: direction.dy * BULLET_SPEED * playerStats.bulletSpeedMultiplier,
-            damage: playerStats.bulletDamage,
-          });
-        }
-      }
-
-      function updateLasers(dt) {
-        for (let i = lasers.length - 1; i >= 0; i--) { lasers[i].life -= dt; if (lasers[i].life <= 0) lasers.splice(i, 1); }
-      }
-
-      function updateAttackBursts(dt) {
-        for (let i = attackBursts.length - 1; i >= 0; i--) { attackBursts[i].life -= dt; if (attackBursts[i].life <= 0) attackBursts.splice(i, 1); }
-      }
-
-      function updateElectricArcs(dt) {
-        for (let i = electricArcs.length - 1; i >= 0; i--) { electricArcs[i].life -= dt; if (electricArcs[i].life <= 0) electricArcs.splice(i, 1); }
-      }
-
-      function updateShooting(dt) {
-        if (input.shoot && shootCooldown <= 0 && health > 0) { shoot(); shootCooldown = SHOT_INTERVAL; }
-      }
-
-      function updateBulletsAndHits(dt) {
-        for (let i = bullets.length - 1; i >= 0; i--) {
-          const bullet = bullets[i];
-          bullet.x += bullet.vx * dt * 60; bullet.y += bullet.vy * dt * 60;
-
-          if (bullet.x < -8 || bullet.x > canvas.width + 8 || bullet.y < -8 || bullet.y > canvas.height + 8) { bullets.splice(i, 1); continue; }
-
-          const enemyIndex = enemies.findIndex((enemy) => Math.hypot(bullet.x - enemy.x, bullet.y - enemy.y) < enemy.size / 2 + 4);
-          if (enemyIndex !== -1) {
-            const enemy = enemies[enemyIndex];
-            enemy.hp -= bullet.damage || BULLET_BASE_DAMAGE;
-            if (playerStats.pathChoice === "electric") triggerElectricChain(enemy);
-            if (enemy.hp <= 0) enemies.splice(enemyIndex, 1);
-            bullets.splice(i, 1);
-          }
-        }
-      }
-
-      function updateWave(dt) {
-        if (upgradeMenu.active) return;
-        waveState.timeLeft -= dt; waveState.spawnCooldown -= dt;
-        if (waveState.spawnCooldown <= 0) {
-          spawnEdgeEnemy();
-          const baseSpawnInterval = Math.max(0.55, 1.4 - waveState.number * 0.05);
-          waveState.spawnCooldown = baseSpawnInterval;
-        }
-        if (waveState.timeLeft <= 0) beginUpgradeSelection();
-      }
-
-      function updateClouds(dt) {
-        for (const cloud of clouds) {
-          cloud.x += cloud.drift * dt;
-          if (cloud.x > canvas.width + cloud.size * 2) { cloud.x = -cloud.size * 2; cloud.y = Math.random() * canvas.height; }
-        }
-      }
-
-      function setKeyState(key, value) {
-        if (key === "w") input.up = value; if (key === "a") input.left = value; if (key === "s") input.down = value; if (key === "d") input.right = value;
-      }
-
-      window.addEventListener("keydown", (event) => {
-        const key = event.key.toLowerCase();
-        if (["w", "a", "s", "d", " ", "q", "1", "2", "3"].includes(key)) event.preventDefault();
-
-        if (key === "q") { triggerDevWaveUpgrade(); return; }
-        if (upgradeMenu.active && ["1", "2", "3"].includes(key)) { chooseUpgrade(Number(key) - 1); return; }
-
-        setKeyState(key, true);
-        if (key === " ") {
-          if (upgradeMenu.active) return;
-          if (playerStats.pathChoice === "smash") {
-            if (shootCooldown <= 0) { useSmash(); shootCooldown = SMASH_INTERVAL; }
-            return;
-          }
-          input.shoot = true; shootCooldown = 0; updateShooting(0);
-        }
+    for (const direction of getShotVectors()) {
+      bullets.push({
+        x: player.x + direction.dx * (PLAYER_SIZE / 2 + 8),
+        y: player.y + direction.dy * (PLAYER_SIZE / 2 + 8),
+        vx: direction.dx * BULLET_SPEED * playerStats.bulletSpeedMultiplier,
+        vy: direction.dy * BULLET_SPEED * playerStats.bulletSpeedMultiplier,
+        damage: playerStats.bulletDamage,
       });
+    }
+  }
 
-      window.addEventListener("keyup", (event) => {
-        const key = event.key.toLowerCase();
-        setKeyState(key, false);
-        if (key === " ") input.shoot = false;
-      });
+  function updateLasers(dt) {
+    for (let i = lasers.length - 1; i >= 0; i--) { lasers[i].life -= dt; if (lasers[i].life <= 0) lasers.splice(i, 1); }
+  }
 
-      canvas.addEventListener("mousemove", (event) => {
-        if (!upgradeMenu.active) { upgradeMenu.hoveredIndex = -1; return; }
-        const rect = canvas.getBoundingClientRect();
-        const mouseX = event.clientX - rect.left; const mouseY = event.clientY - rect.top;
-        upgradeMenu.hoveredIndex = getUpgradeCardIndexAt(mouseX, mouseY);
-      });
+  function updateAttackBursts(dt) {
+    for (let i = attackBursts.length - 1; i >= 0; i--) { attackBursts[i].life -= dt; if (attackBursts[i].life <= 0) attackBursts.splice(i, 1); }
+  }
 
-      canvas.addEventListener("click", (event) => {
-        const rect = canvas.getBoundingClientRect();
-        const clickX = event.clientX - rect.left; const clickY = event.clientY - rect.top;
+  function updateElectricArcs(dt) {
+    for (let i = electricArcs.length - 1; i >= 0; i--) { electricArcs[i].life -= dt; if (electricArcs[i].life <= 0) electricArcs.splice(i, 1); }
+  }
 
-        if (upgradeMenu.active) {
-          const clickedIndex = getUpgradeCardIndexAt(clickX, clickY);
-          if (clickedIndex !== -1) { chooseUpgrade(clickedIndex); return; }
-        }
+  function updateShooting(dt) {
+    if (input.shoot && shootCooldown <= 0 && health > 0) { shoot(); shootCooldown = SHOT_INTERVAL; }
+  }
 
-        if (health > 0) return;
-        const buttonX = canvas.width / 2 - endScreenButton.width / 2;
-        const buttonY = canvas.height / 2 + 44;
-        const clickedRestart = clickX >= buttonX && clickX <= buttonX + endScreenButton.width && clickY >= buttonY && clickY <= buttonY + endScreenButton.height;
-        if (clickedRestart) restartGame();
-      });
+  function updateBulletsAndHits(dt) {
+    for (let i = bullets.length - 1; i >= 0; i--) {
+      const bullet = bullets[i];
+      bullet.x += bullet.vx * dt * 60; bullet.y += bullet.vy * dt * 60;
 
-      function restartGame() {
-        player.x = canvas.width / 2; player.y = canvas.height / 2; player.vx = 0; player.vy = 0; player.facing = "up"; player.aimDx = 0; player.aimDy = -1;
-        health = PLAYER_MAX_HEALTH; healthFlashTimer = 0; enemyDamageCooldown = 0; shootCooldown = 0; input.shoot = false;
-        bullets.length = 0; lasers.length = 0; enemies.length = 0; attackBursts.length = 0; electricArcs.length = 0;
-        upgradeMenu.active = false; upgradeMenu.cards = [];
+      if (bullet.x < -8 || bullet.x > canvas.width + 8 || bullet.y < -8 || bullet.y > canvas.height + 8) { bullets.splice(i, 1); continue; }
 
-        playerStats.bulletDamage = BULLET_BASE_DAMAGE;
-        playerStats.bulletSpeedMultiplier = 1;
-        playerStats.shotMode = 1;
-        playerStats.hasLaser = false;
-        playerStats.hasLaserAllDirections = false;
-        playerStats.hasAutoLaser = false;
-        playerStats.hasSmash = false;
-        playerStats.hasMegaSmash = false;
-        playerStats.hasEarthquake = false;
-        playerStats.hasElectric = false;
-        playerStats.hasMegaShock = false;
-        playerStats.hasThunderstorm = false;
-        playerStats.pathChoice = null;
-
-        waveState.number = 1; waveState.timeLeft = WAVE_DURATION; waveState.spawnCooldown = 0.25;
-        spawnEdgeEnemy(); updateHud();
+      const enemyIndex = enemies.findIndex((enemy) => Math.hypot(bullet.x - enemy.x, bullet.y - enemy.y) < enemy.size / 2 + 4);
+      if (enemyIndex !== -1) {
+        const enemy = enemies[enemyIndex];
+        enemy.hp -= bullet.damage || BULLET_BASE_DAMAGE;
+        if (playerStats.pathChoice === "electric") triggerElectricChain(enemy);
+        if (enemy.hp <= 0) enemies.splice(enemyIndex, 1);
+        bullets.splice(i, 1);
       }
+    }
+  }
 
-      function gameLoop(timestamp) {
-        if (lastFrameTime === 0) lastFrameTime = timestamp;
-        const dt = Math.min((timestamp - lastFrameTime) / 1000, 0.05);
-        lastFrameTime = timestamp;
-
-        healthFlashTimer = Math.max(0, healthFlashTimer - dt);
-        shootCooldown = Math.max(0, shootCooldown - dt);
-
-        if (health > 0 && !upgradeMenu.active) {
-          updateWave(dt); updateClouds(dt); updatePlayer(dt); updateEnemies(dt);
-          if (playerStats.pathChoice !== "smash") updateShooting(dt);
-          updateBulletsAndHits(dt); updateLasers(dt); updateAttackBursts(dt); updateElectricArcs(dt);
-          updateHud();
-        }
-        render();
-        requestAnimationFrame(gameLoop);
-      }
-
-      createClouds(22);
+  function updateWave(dt) {
+    if (upgradeMenu.active) return;
+    waveState.timeLeft -= dt; waveState.spawnCooldown -= dt;
+    if (waveState.spawnCooldown <= 0) {
       spawnEdgeEnemy();
+      const baseSpawnInterval = Math.max(0.55, 1.4 - waveState.number * 0.05);
+      waveState.spawnCooldown = baseSpawnInterval;
+    }
+    if (waveState.timeLeft <= 0) beginUpgradeSelection();
+  }
+
+  function updateClouds(dt) {
+    for (const cloud of clouds) {
+      cloud.x += cloud.drift * dt;
+      if (cloud.x > canvas.width + cloud.size * 2) { cloud.x = -cloud.size * 2; cloud.y = Math.random() * canvas.height; }
+    }
+  }
+
+  function setKeyState(key, value) {
+    if (key === "w") input.up = value; if (key === "a") input.left = value; if (key === "s") input.down = value; if (key === "d") input.right = value;
+  }
+
+  window.addEventListener("keydown", (event) => {
+    const key = event.key.toLowerCase();
+    if (["w", "a", "s", "d", " ", "q", "1", "2", "3"].includes(key)) event.preventDefault();
+
+    if (key === "q") { triggerDevWaveUpgrade(); return; }
+    if (upgradeMenu.active && ["1", "2", "3"].includes(key)) { chooseUpgrade(Number(key) - 1); return; }
+
+    setKeyState(key, true);
+    if (key === " ") {
+      if (upgradeMenu.active) return;
+      if (playerStats.pathChoice === "smash") {
+        if (shootCooldown <= 0) { useSmash(); shootCooldown = SMASH_INTERVAL; }
+        return;
+      }
+      input.shoot = true; shootCooldown = 0; updateShooting(0);
+    }
+  });
+
+  window.addEventListener("keyup", (event) => {
+    const key = event.key.toLowerCase();
+    setKeyState(key, false);
+    if (key === " ") input.shoot = false;
+  });
+
+  canvas.addEventListener("mousemove", (event) => {
+    if (!upgradeMenu.active) { upgradeMenu.hoveredIndex = -1; return; }
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = event.clientX - rect.left; const mouseY = event.clientY - rect.top;
+    upgradeMenu.hoveredIndex = getUpgradeCardIndexAt(mouseX, mouseY);
+  });
+
+  canvas.addEventListener("click", (event) => {
+    const rect = canvas.getBoundingClientRect();
+    const clickX = event.clientX - rect.left; const clickY = event.clientY - rect.top;
+
+    if (upgradeMenu.active) {
+      const clickedIndex = getUpgradeCardIndexAt(clickX, clickY);
+      if (clickedIndex !== -1) { chooseUpgrade(clickedIndex); return; }
+    }
+
+    if (health > 0) return;
+    const buttonX = canvas.width / 2 - endScreenButton.width / 2;
+    const buttonY = canvas.height / 2 + 44;
+    const clickedRestart = clickX >= buttonX && clickX <= buttonX + endScreenButton.width && clickY >= buttonY && clickY <= buttonY + endScreenButton.height;
+    if (clickedRestart) restartGame();
+  });
+
+  function restartGame() {
+    player.x = canvas.width / 2; player.y = canvas.height / 2; player.vx = 0; player.vy = 0; player.facing = "up"; player.aimDx = 0; player.aimDy = -1;
+    health = PLAYER_MAX_HEALTH; healthFlashTimer = 0; enemyDamageCooldown = 0; shootCooldown = 0; input.shoot = false;
+    bullets.length = 0; lasers.length = 0; enemies.length = 0; attackBursts.length = 0; electricArcs.length = 0;
+    upgradeMenu.active = false; upgradeMenu.cards = [];
+
+    playerStats.bulletDamage = BULLET_BASE_DAMAGE;
+    playerStats.bulletSpeedMultiplier = 1;
+    playerStats.shotMode = 1;
+    playerStats.hasLaser = false;
+    playerStats.hasLaserAllDirections = false;
+    playerStats.hasAutoLaser = false;
+    playerStats.hasSmash = false;
+    playerStats.hasMegaSmash = false;
+    playerStats.hasEarthquake = false;
+    playerStats.hasElectric = false;
+    playerStats.hasMegaShock = false;
+    playerStats.hasThunderstorm = false;
+    playerStats.pathChoice = null;
+
+    waveState.number = 1; waveState.timeLeft = WAVE_DURATION; waveState.spawnCooldown = 0.25;
+    spawnEdgeEnemy(); updateHud();
+  }
+
+  function gameLoop(timestamp) {
+    if (lastFrameTime === 0) lastFrameTime = timestamp;
+    const dt = Math.min((timestamp - lastFrameTime) / 1000, 0.05);
+    lastFrameTime = timestamp;
+
+    healthFlashTimer = Math.max(0, healthFlashTimer - dt);
+    shootCooldown = Math.max(0, shootCooldown - dt);
+
+    if (health > 0 && !upgradeMenu.active) {
+      updateWave(dt); updateClouds(dt); updatePlayer(dt); updateEnemies(dt);
+      if (playerStats.pathChoice !== "smash") updateShooting(dt);
+      updateBulletsAndHits(dt); updateLasers(dt); updateAttackBursts(dt); updateElectricArcs(dt);
       updateHud();
-      render();
-      requestAnimationFrame(gameLoop);
-    </script>
+    }
+    render();
+    requestAnimationFrame(gameLoop);
+  }
+
+  createClouds(22);
+  spawnEdgeEnemy();
+  updateHud();
+  render();
+  requestAnimationFrame(gameLoop);
+</script>
   </body>
 </html>
