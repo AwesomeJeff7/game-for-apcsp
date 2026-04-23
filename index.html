@@ -537,7 +537,11 @@
   function render() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     drawSkyBackground(); drawEnemies(); drawBullets(); drawLasers(); drawElectricArcs(); drawAttackBursts(); drawPlayer(); drawHealthBar(); drawUpgradeMenu();
-
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "16px system-ui, sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillText("v1", canvas.width - 12, canvas.height - 12);
+    ctx.textAlign = "left";
     if (health <= 0) {
       const buttonX = canvas.width / 2 - endScreenButton.width / 2;
       const buttonY = canvas.height / 2 + 44;
