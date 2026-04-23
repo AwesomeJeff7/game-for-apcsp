@@ -80,6 +80,7 @@
   const SMASH_RADIUS = 70;
   const MEGA_SMASH_DAMAGE = 11;
   const MEGA_SMASH_RADIUS = 110;
+  const EARTHQUAKE_RADIUS = 101;
   const SMASH_INTERVAL = 0.45;
   const ELECTRIC_CHAIN_RADIUS = 150;
 
@@ -270,7 +271,7 @@
 
   function useSmash() {
     const isEarthquake = playerStats.hasEarthquake;
-    const radius = isEarthquake ? SMASH_RADIUS : playerStats.hasMegaSmash ? MEGA_SMASH_RADIUS : SMASH_RADIUS;
+    const radius = isEarthquake ? EARTHQUAKE_RADIUS : playerStats.hasMegaSmash ? MEGA_SMASH_RADIUS : SMASH_RADIUS;
     const damage = isEarthquake ? SMASH_DAMAGE : playerStats.hasMegaSmash ? MEGA_SMASH_DAMAGE : SMASH_DAMAGE;
     const x = player.x;
     const y = player.y;
@@ -278,7 +279,6 @@
     applyAreaDamage(x, y, radius, damage);
     if (!isEarthquake) return;
     smashUseCount += 1;
-    SMASH_RADIUS = 200;
     if (smashUseCount % 2 !== 0) return;
     for (const direction of Array.from({ length: 8 }, (_, i) => rotateVector(1, 0, (Math.PI * 2 * i) / 8))) {
       bullets.push({
