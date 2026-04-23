@@ -278,6 +278,7 @@
     applyAreaDamage(x, y, radius, damage);
     if (!isEarthquake) return;
     smashUseCount += 1;
+    SMASH_RADIUS = 200;
     if (smashUseCount % 2 !== 0) return;
     for (const direction of Array.from({ length: 8 }, (_, i) => rotateVector(1, 0, (Math.PI * 2 * i) / 8))) {
       bullets.push({
