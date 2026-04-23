@@ -80,7 +80,7 @@
   const SMASH_RADIUS = 70;
   const MEGA_SMASH_DAMAGE = 11;
   const MEGA_SMASH_RADIUS = 110;
-  const EARTHQUAKE_RADIUS = 200;
+  const EARTHQUAKE_RADIUS = 130;
   const SMASH_INTERVAL = 0.45;
   const ELECTRIC_CHAIN_RADIUS = 150;
 
@@ -223,7 +223,7 @@
       if (playerStats.hasSmash && !playerStats.hasMegaSmash) {
         pool.push({ key: "megaSmash", title: "Mega Smash", description: "Smash circle gets bigger.", apply: () => { playerStats.hasMegaSmash = true; } });
       } else if (playerStats.hasMegaSmash && !playerStats.hasEarthquake) {
-        pool.push({ key: "earthquake", title: "Earthquake", description: "Back to normal Smash; every 2 smashes fires in 8 directions.", apply: () => { playerStats.hasEarthquake = true; } });
+        pool.push({ key: "earthquake", title: "Earthquake", description: "even bigger radius; every 2 smashes fires in 8 directions.", apply: () => { playerStats.hasEarthquake = true; } });
       }
     }
 
@@ -537,6 +537,7 @@
   function render() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     drawSkyBackground(); drawEnemies(); drawBullets(); drawLasers(); drawElectricArcs(); drawAttackBursts(); drawPlayer(); drawHealthBar(); drawUpgradeMenu();
+    ctx.fillStyle = "#000"; // or "black"
     ctx.fillStyle = "#ffffff";
     ctx.font = "16px system-ui, sans-serif";
     ctx.textAlign = "right";
