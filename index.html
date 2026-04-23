@@ -80,8 +80,6 @@
   const SMASH_RADIUS = 70;
   const MEGA_SMASH_DAMAGE = 11;
   const MEGA_SMASH_RADIUS = 110;
-  const EARTHQUAKE_DAMAGE = 3;
-  const EARTHQUAKE_RADIUS = Math.hypot(canvas.width, canvas.height) * 1.25;
   const SMASH_INTERVAL = 0.45;
   const ELECTRIC_CHAIN_RADIUS = 150;
 
@@ -122,6 +120,7 @@
   let enemyDamageCooldown = 0;
   let healthFlashTimer = 0;
   let shootCooldown = 0;
+  let smashUseCount = 0;
   const endScreenButton = { width: 190, height: 46 };
   const upgradeCard = { width: 170, height: 220, gap: 22, y: 200 };
 
@@ -223,7 +222,7 @@
       if (playerStats.hasSmash && !playerStats.hasMegaSmash) {
         pool.push({ key: "megaSmash", title: "Mega Smash", description: "Smash circle gets bigger.", apply: () => { playerStats.hasMegaSmash = true; } });
       } else if (playerStats.hasMegaSmash && !playerStats.hasEarthquake) {
-        pool.push({ key: "earthquake", title: "Earthquake", description: "Huge map-wide smash (lower damage).", apply: () => { playerStats.hasEarthquake = true; } });
+        pool.push({ key: "earthquake", title: "Earthquake", description: "Back to normal Smash; every 2 smashes fires in 8 directions.", apply: () => { playerStats.hasEarthquake = true; } });
       }
     }
 
@@ -271,12 +270,24 @@
 
   function useSmash() {
     const isEarthquake = playerStats.hasEarthquake;
-    const radius = isEarthquake ? EARTHQUAKE_RADIUS : playerStats.hasMegaSmash ? MEGA_SMASH_RADIUS : SMASH_RADIUS;
-    const damage = isEarthquake ? EARTHQUAKE_DAMAGE : playerStats.hasMegaSmash ? MEGA_SMASH_DAMAGE : SMASH_DAMAGE;
-    const x = isEarthquake ? canvas.width / 2 : player.x;
-    const y = isEarthquake ? canvas.height / 2 : player.y;
+    const radius = isEarthquake ? SMASH_RADIUS : playerStats.hasMegaSmash ? MEGA_SMASH_RADIUS : SMASH_RADIUS;
+    const damage = isEarthquake ? SMASH_DAMAGE : playerStats.hasMegaSmash ? MEGA_SMASH_DAMAGE : SMASH_DAMAGE;
+    const x = player.x;
+    const y = player.y;
     attackBursts.push({ x, y, radius, life: 0.26, maxLife: 0.26 });
     applyAreaDamage(x, y, radius, damage);
+    if (!isEarthquake) return;
+    smashUseCount += 1;
+    if (smashUseCount % 2 !== 0) return;
+    for (const direction of Array.from({ length: 8 }, (_, i) => rotateVector(1, 0, (Math.PI * 2 * i) / 8))) {
+      bullets.push({
+        x: player.x + direction.dx * (PLAYER_SIZE / 2 + 8),
+        y: player.y + direction.dy * (PLAYER_SIZE / 2 + 8),
+        vx: direction.dx * BULLET_SPEED * playerStats.bulletSpeedMultiplier,
+        vy: direction.dy * BULLET_SPEED * playerStats.bulletSpeedMultiplier,
+        damage: playerStats.bulletDamage,
+      });
+    }
   }
 
   function getElectricChainLimit() {
@@ -721,7 +732,7 @@
 
   function restartGame() {
     player.x = canvas.width / 2; player.y = canvas.height / 2; player.vx = 0; player.vy = 0; player.facing = "up"; player.aimDx = 0; player.aimDy = -1;
-    health = PLAYER_MAX_HEALTH; healthFlashTimer = 0; enemyDamageCooldown = 0; shootCooldown = 0; input.shoot = false;
+    health = PLAYER_MAX_HEALTH; healthFlashTimer = 0; enemyDamageCooldown = 0; shootCooldown = 0; smashUseCount = 0; input.shoot = false;
     bullets.length = 0; lasers.length = 0; enemies.length = 0; attackBursts.length = 0; electricArcs.length = 0;
     upgradeMenu.active = false; upgradeMenu.cards = [];
 
