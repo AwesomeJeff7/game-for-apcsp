@@ -68,7 +68,7 @@
   const PLAYER_FRICTION = 35;
   const PLAYER_SIZE = 28;
   const BULLET_SPEED = 10;
-  const SHOT_INTERVAL = 0.11;
+  const SHOT_INTERVAL = 0.16;
   const WAVE_DURATION = 30;
   const ENEMY_SPEED = 1.7;
   const PLAYER_MAX_HEALTH = 100;
@@ -80,8 +80,8 @@
   const SMASH_RADIUS = 70;
   const MEGA_SMASH_DAMAGE = 11;
   const MEGA_SMASH_RADIUS = 110;
-  const EARTHQUAKE_RADIUS = 130;
-  const SMASH_INTERVAL = 0.45;
+  const EARTHQUAKE_RADIUS = 101;
+  const SMASH_INTERVAL = 0.6;
   const ELECTRIC_CHAIN_RADIUS = 150;
 
   const DIRECTIONS = {
@@ -102,6 +102,7 @@
   const playerStats = {
     bulletDamage: BULLET_BASE_DAMAGE,
     bulletSpeedMultiplier: 1,
+    fireRateUpgradeCount: 0,
     shotMode: 1,
     hasLaser: false,
     hasLaserAllDirections: false,
@@ -192,9 +193,16 @@
   function getUpgradePool() {
     const pool = [
       { key: "damage", title: "Damage +1", description: "Bullets hit harder.", apply: () => { playerStats.bulletDamage += 1; } },
-      { key: "bulletSpeed", title: "Bullet Speed +20%", description: "Shots travel faster.", apply: () => { playerStats.bulletSpeedMultiplier *= 1.2; } },
       { key: "heal", title: "Heal +30", description: "Restore your HP.", apply: () => { health = clamp(health + 30, 0, PLAYER_MAX_HEALTH); } },
     ];
+    if (playerStats.fireRateUpgradeCount < 5) {
+      pool.push({
+        key: "fireRate",
+        title: "Faster Attacks",
+        description: "Shorter cooldown between all attacks (max 5).",
+        apply: () => { playerStats.fireRateUpgradeCount += 1; },
+      });
+    }
 
     if (playerStats.shotMode < 2) {
       pool.push({ key: "shot2", title: "2-Way Shot", description: "Fire forward + backward.", apply: () => { playerStats.shotMode = 2; } });
@@ -223,7 +231,7 @@
       if (playerStats.hasSmash && !playerStats.hasMegaSmash) {
         pool.push({ key: "megaSmash", title: "Mega Smash", description: "Smash circle gets bigger.", apply: () => { playerStats.hasMegaSmash = true; } });
       } else if (playerStats.hasMegaSmash && !playerStats.hasEarthquake) {
-        pool.push({ key: "earthquake", title: "Earthquake", description: "even bigger radius; every 2 smashes fires in 8 directions.", apply: () => { playerStats.hasEarthquake = true; } });
+        pool.push({ key: "earthquake", title: "Earthquake", description: "Back to normal Smash; every 2 smashes fires in 8 directions.", apply: () => { playerStats.hasEarthquake = true; } });
       }
     }
 
@@ -537,12 +545,7 @@
   function render() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     drawSkyBackground(); drawEnemies(); drawBullets(); drawLasers(); drawElectricArcs(); drawAttackBursts(); drawPlayer(); drawHealthBar(); drawUpgradeMenu();
-    ctx.fillStyle = "#000"; // or "black"
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "16px system-ui, sans-serif";
-    ctx.textAlign = "right";
-    ctx.fillText("v1", canvas.width - 12, canvas.height - 12);
-    ctx.textAlign = "left";
+
     if (health <= 0) {
       const buttonX = canvas.width / 2 - endScreenButton.width / 2;
       const buttonY = canvas.height / 2 + 44;
@@ -646,7 +649,7 @@
   }
 
   function updateShooting(dt) {
-    if (input.shoot && shootCooldown <= 0 && health > 0) { shoot(); shootCooldown = SHOT_INTERVAL; }
+    if (input.shoot && shootCooldown <= 0 && health > 0) { shoot(); shootCooldown = SHOT_INTERVAL * Math.pow(0.9, playerStats.fireRateUpgradeCount); }
   }
 
   function updateBulletsAndHits(dt) {
@@ -700,7 +703,7 @@
     if (key === " ") {
       if (upgradeMenu.active) return;
       if (playerStats.pathChoice === "smash") {
-        if (shootCooldown <= 0) { useSmash(); shootCooldown = SMASH_INTERVAL; }
+        if (shootCooldown <= 0) { useSmash(); shootCooldown = SMASH_INTERVAL * Math.pow(0.9, playerStats.fireRateUpgradeCount); }
         return;
       }
       input.shoot = true; shootCooldown = 0; updateShooting(0);
@@ -744,6 +747,7 @@
 
     playerStats.bulletDamage = BULLET_BASE_DAMAGE;
     playerStats.bulletSpeedMultiplier = 1;
+    playerStats.fireRateUpgradeCount = 0;
     playerStats.shotMode = 1;
     playerStats.hasLaser = false;
     playerStats.hasLaserAllDirections = false;
